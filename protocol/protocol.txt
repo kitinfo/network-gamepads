@@ -1,0 +1,60 @@
+
+\n is line and command seperator
+
+commands:
+== HELLO <version> ==
+Hello message from client to server with the version of the client.
+
+== 301 PASSWORD ==
+Sends the server to the client when a password is required.
+
+== PASSWORD <password> ==
+Sends the client to the server with the given password
+
+== 200 OK ==
+Sends the server when last command was successful.
+
+== 302 REGISTER ==
+Sends the server to the client when he wants a nickname
+
+== REGISTER <nickname> ==
+Sends the client to the server to register a nickname.
+
+== IDENTIFIER <id> (from server) ==
+Sends the server to the client to give the client an unqiue id.
+This id can continue the session when there was a disconnect.
+
+== IDENTIFIER <id> ==
+Can be send from the client to the server after an 303 IDENTIFIER massage from
+server to continue the last session.
+
+== ACTION ==
+Sends the server to the client, when the server is ready for getting the
+input data.
+
+== CONTINUE <version> ==
+Sends the client to the server to resume the last session.
+
+Basic connect:
+client ---------- server
+HELLO <version> ------->
+          <---------- 301 PASSWORD
+PASSWORD <password> ---->
+          <---------- 200 OK
+		  <---------- 302 REGISTER
+REGISTER <name> ------->
+          <---------- 200 OK
+		  <---------- IDENTIFIER <identifier>
+		  <---------- ACTION
+
+
+
+
+Basic continue:
+
+client -------- server
+CONTINUE <version> ------>
+		<----------- 303 IDENTIFIER
+IDENTIFIER <id> --------->
+		<----------- 200 OK
+		<----------- ACTION
