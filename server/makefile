@@ -1,4 +1,4 @@
-CFLAGS=-Wall -g
+CFLAGS=-Wall -g -levdev
 gamepad-server: ../libs/logger.c
 
 clean:
