@@ -30,18 +30,17 @@ int sock_open(char* host, int port_i){
 		if(fd<0){
 			continue;
 		}
-
+		status = connect(fd, addr_it->ai_addr, addr_it->ai_addrlen);
 		break;
 	}
 
 	freeaddrinfo(info);
 
 	if(!addr_it){
-		fprintf(stderr, "Failed to create listening socket\n");
+		fprintf(stderr, "Failed to create socket\n");
 		return -1;
 	}
 
-	status=connect(fd, addr_it->ai_addr, addr_it->ai_addrlen);
 	if(status<0){
 		perror("sock_open/listen");
 		close(fd);

@@ -6,11 +6,15 @@
 #include <libevdev/libevdev-uinput.h>
 #include "../libs/logger.h"
 #include <signal.h>
+#include <stdlib.h>
 
 #include "sockfd.c"
 
 int MAX_DEVICES = 8;
 volatile int shutdown_server = false;
+const unsigned MAX_SIZE = 256;
+const char* VERSION = "1.0";
+const unsigned MAX_TOKEN = 64;
 
 struct libevdev* create_new_node(const char* identifier) {
 	struct libevdev* dev = libevdev_new();
@@ -35,6 +39,7 @@ struct libevdev* create_new_node(const char* identifier) {
 	return dev;
 }
 
+// TODO: add check for getrandom function
 #ifndef getrandom
 
 int getrandom(char* rand, unsigned size, unsigned int flags) {
@@ -70,14 +75,132 @@ int genId(char* id, unsigned size) {
 	return status;
 }
 
-int run_server(struct libevdev_uinput* uidev, int uinput_fd, char* host, int port) {
-	int sock_fd = sock_open(host, port);
+int check_version(int fd, char* version) {
+	if (!strncmp(version, VERSION, strlen(VERSION))) {
+		return 0;
+	} else {
+		int len = snprintf(NULL, 0, "400 Version not matched (Server: %s, Client: %s)", VERSION, version);
+		char out[len + 1];
+		snprintf(out, len + 1, "400 Version not matched (Server: %s, Client: %s)", VERSION, version);
+		return -1;
+	}
+}
+
+int check_hello(int fd, char* msg, char* token, char* password) {
+
+	char* pw = strstr(msg, " ");
+	if (pw == NULL) {
+		sock_send(fd, "405 No Password supplied");
+		return -1;
+	}
+
+	unsigned pw_len = strlen(pw);
+
+	if (pw_len < 1) {
+		sock_send(fd, "405 No Password supplied");
+		return -1;
+	}
+	pw[0] = 0;
+	pw++;
+
+	if (check_version(fd, msg) < 0) {
+		return -1;
+	}
+
+	if (strncmp(pw, password, strlen(password))) {
+		sock_send(fd, "401 Wrong password");
+		return -1;
+	}
+
+	//if (genId(token, MAX_TOKEN) < 0) {
+	//	return -1;
+	//}
+
+	char out[strlen(token) + 5];
+	snprintf(out, sizeof(out), "%s %s", "200", token);
+	if (sock_send(fd, out) < 0) {
+		perror("check_hello/send");
+		return -1;
+	}
+
+	return 0;
+}
+
+int check_continue(int fd, char* msg, char* token) {
+
+	char* t = strstr(msg, " ");
+
+	if (t == NULL) {
+		sock_send(fd, "406 No Token supplied");
+		return -1;
+	}
+
+	unsigned t_len = strlen(t);
+
+	if (t_len < 1) {
+		sock_send(fd, "406 No Token supplied");
+		return -1;
+	}
+
+	t[0] = 0;
+	t++;
+
+	if (check_version(fd, msg) < 0) {
+		return -1;
+	}
+
+	if (strncmp(t, token, strlen(token))) {
+		sock_send(fd, "403 Token expired");
+		return -1;
+	}
+
+	char out[strlen(token) + 5];
+	snprintf(out, sizeof(out), "%s %s", "200", token);
+
+	sock_send(fd, out);
+	return 0;
+}
+
+int check_connect(int fd, char* token, char* password) {
+
+	char msg[MAX_SIZE + 1];
+	memset(msg, 0, MAX_SIZE + 1);
+
+	int bytes = recv(fd, msg, MAX_SIZE, 0);
+
+	if (bytes < 0) {
+		perror("check_connect/recv");
+		return -1;
+	}
+	printf("msg: %s\n", msg);
+	if (!strncmp(msg, "HELLO", 5)) {
+		return check_hello(fd, msg + 6, token, password);
+	} else if (!strncmp(msg, "CONTINUE", 8)) {
+		return check_continue(fd, msg + 9, token);
+	}
+	printf("Unkown command\n");
+	int bytes_send = 0;
+	char* ans = "400 Unkown Command\n";
+	unsigned ans_len = strlen(ans);
+	do {
+		bytes_send = send(fd, ans, ans_len - bytes_send, 0);
+		ans_len -= bytes_send;
+	} while (ans_len > 0);
+	return 0;
+}
+
+int run_server(struct libevdev_uinput* uidev, int uinput_fd, int sock_fd, char* token, char* password) {
 
 	if (sock_fd < 0) {
 		return -1;
 	}
 
-	int accept_fd = accept(sock_fd, NULL, NULL);
+	int accept_fd;
+	do {
+		accept_fd = accept(sock_fd, NULL, NULL);
+		printf("Found client.\n");
+	} while(check_connect(accept_fd, token, password) < 0 && shutdown_server);
+
 
 	char buf[256];
 	memset(buf, 0, 256);
@@ -118,10 +241,16 @@ int main(int argc, char** argv) {
 		.verbosity = 5
 	};
 
+	char* password = getenv("GAMEPAD_SERVER_PW");
+
+	if (password == NULL) {
+		password = "0000";
+	}
+
 	logprintf(log, LOG_INFO, "Starting server...\n");
 /*
-	char id[64];
-	if (genId(id, 64) < 0) {
+	char id[MAX_TOKEN + 1];
+	if (genId(id, MAX_TOKEN) < 0) {
 		return 100;
 	}
 	logprintf(log, LOG_INFO, "generated id: %s\n", id);
@@ -136,7 +265,11 @@ int main(int argc, char** argv) {
 	logprintf(log, LOG_INFO, "input device: %s\n", libevdev_uinput_get_devnode(uidev));
 	int uinput_fd = libevdev_uinput_get_fd(uidev);
 
-	run_server(uidev, uinput_fd, "localhost", 7999);
+	int sock_fd = sock_open("localhost", 7999);
+	if (sock_fd < 0) {
+		return -1;
+	}
+	run_server(uidev, uinput_fd, sock_fd, id, password);
 
 	libevdev_uinput_destroy(uidev);
 	libevdev_free(dev);
