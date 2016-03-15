@@ -1,60 +1,50 @@
+A Token is not longer than 64 characters.
+A message is maximal 256 characters long.
+Every message must be finished by a null byte ('\0').
 
-\n is line and command seperator
+== First connection ==
 
-commands:
-== HELLO <version> ==
-Hello message from client to server with the version of the client.
+First the client sends the hello message to the server.
+=> HELLO <version> <password>
+<version> is the client version.
+<password> is the password for this server.
 
-== 301 PASSWORD ==
-Sends the server to the client when a password is required.
+If everything is ok the server answers with:
+<= 200 <token>
+<token> is the connection token (for reconnecting when the connection is
+lost).
+You can now transfer the evdev tokens.
 
-== PASSWORD <password> ==
-Sends the client to the server with the given password
+On error the server can answer one of the following messages:
+<= 400 Version not matched (Server: <server>, Client: <client>)
+The version of the server and of the client don't match.
+<server> is the server version and <client> is the client version.
 
-== 200 OK ==
-Sends the server when last command was successful.
+<= 401 Wrong password
+The password is wrong.
 
-== 302 REGISTER ==
-Sends the server to the client when he wants a nickname
+<= 405 No Password supplied
+There is no password supplied (Or no version).
 
-== REGISTER <nickname> ==
-Sends the client to the server to register a nickname.
+== Reconnect ==
+If you lost the connection to the server you can try to reconnect.
+This can be done with sending a CONTINUE request.
 
-== IDENTIFIER <id> (from server) ==
-Sends the server to the client to give the client an unqiue id.
-This id can continue the session when there was a disconnect.
+=> CONTINUE <version> <token>
+<version> is the client version.
+<token> is the token received by the first connection.
 
-== IDENTIFIER <id> ==
-Can be send from the client to the server after an 303 IDENTIFIER massage from
-server to continue the last session.
+The server answers (if everything is ok) with:
+<= 200 <token>
+You can now begin to transfer the evdev events.
 
-== ACTION ==
-Sends the server to the client, when the server is ready for getting the
-input data.
+On error the server can ansẃer with on of the following messages:
+<= 400 Version not matched (Server: <server>, Client: <client>)
+The version of the server and of the client don't match.
+<server> is the server version and <client> is the client version.
 
-== CONTINUE <version> ==
-Sends the client to the server to resume the last session.
+<= 406 No Token supplied
+The server couldn't find the token or version in the message.
 
-Basic connect:
-client ---------- server
-HELLO <version> ------->
-          <---------- 301 PASSWORD
-PASSWORD <password> ---->
-          <---------- 200 OK
-		  <---------- 302 REGISTER
-REGISTER <name> ------->
-          <---------- 200 OK
-		  <---------- IDENTIFIER <identifier>
-		  <---------- ACTION
-
-
-
-
-Basic continue:
-
-client -------- server
-CONTINUE <version> ------>
-		<----------- 303 IDENTIFIER
-IDENTIFIER <id> --------->
-		<----------- 200 OK
-		<----------- ACTION
+<= 403 Token expired
+The token is no longer active. Try an hello request.
