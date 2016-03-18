@@ -49,7 +49,18 @@ int sock_open(char* host, int port_i){
 
 	return fd;
 }
-
+int sock_send(int fd, char* msg) {
+	unsigned msg_len = strlen(msg) + 1;
+	int bytes;
+	do {
+		bytes = send(fd, msg, msg_len, 0); 
+		if (bytes < 0) {
+			return -1;
+		}
+		msg_len -= bytes;
+	} while (msg_len > 0);
+	return 0;
+}
 int sock_close(int fd){
 	return close(fd);
 }

@@ -42,17 +42,9 @@ int continue_connect(int sock_fd, char* token) {
 	snprintf(msg, msg_len + 1, "%s %s %s\n", cont, version, token);
 
 	int bytes = 0;
-
-	do {
-		bytes = send(sock_fd, msg, msg_len + 1, 0);
-
-		if (bytes < 0) {
-			perror("continue_connect/send");
-		}
-
-		msg_len -= bytes;
-	} while (msg_len > 0);
-
+	if (sock_send(sock_fd, msg) < 0) {
+		perror("continue_connect/send");
+	}
 	memset(msg, 0, MSG_MAX + 1);
 
 	bytes = recv(sock_fd, msg, MSG_MAX, 0);
@@ -84,7 +76,7 @@ char* init_connect(int sock_fd, char* password) {
 
 	char* hello = "HELLO";
 
-	unsigned msg_len = strlen(hello) + 1 + strlen(version) + 1 + strlen(password) + 1;
+	unsigned msg_len = strlen(hello) + 1 + strlen(version) + 1 + pw_len;
 
 	if (msg_len > MSG_MAX) {
 		printf("Message too long.\n");
@@ -92,21 +84,13 @@ char* init_connect(int sock_fd, char* password) {
 	}
 
 	char msg[MSG_MAX + 1];
-
-	snprintf(msg, msg_len + 1, "%s %s %s\n", hello, version, password);
-
+	memset(msg, 0, MSG_MAX +1);
+	snprintf(msg, msg_len + 1, "%s %s %s", hello, version, password);
 	int bytes = 0;
-	do {
-		bytes = send(sock_fd, msg, msg_len + 1, 0);
-
-		if (bytes < 0) {
+	if (sock_send(sock_fd, msg) < 0) {
 			perror("init_connect/send");
 			return NULL;
-		}
-
-		msg_len -= bytes;
-	} while (msg_len > 0);
-
+	}
 	memset(msg, 0, msg_len + 1);
 	bytes = recv(sock_fd, msg, MSG_MAX, 0);
 
@@ -141,7 +125,7 @@ int main(int argc, char** argv){
 	char* port = getenv("GAMEPAD_SERVER_POST");
 	char* password = getenv("GAMEPAD_SERVER_PW");
 	if (host == NULL) {
-		host = "localhost";
+		host = "129.13.215.34";
 	}
 
 	if (port == NULL) {
@@ -165,11 +149,15 @@ int main(int argc, char** argv){
 
 	input_device=argv[1];
 
+	printf("input_device: %s\n", input_device);
 	fd=open(input_device, O_RDONLY);
-
 	if(fd<0){
 		printf("Failed to open device\n");
 		return 1;
+	}
+
+	if (!isatty(fileno(stdout))) {
+		setbuf(stdout, NULL);
 	}
 
 	sock_fd = sock_open(host, port_num);
@@ -185,18 +173,26 @@ int main(int argc, char** argv){
 		return 3;
 	}
 
+	fd_set rdfs;
+
+	FD_ZERO(&rdfs);
+	FD_SET(fd, &rdfs);
 
 	//get exclusive control
-	bytes=ioctl(fd, EVIOCGRAB, 1);
+ 	bytes=ioctl(fd, EVIOCGRAB, 1);
 
 	while(true){
-		bytes = read(fd, &ev, sizeof(struct input_event));
+		printf("preselect\n");
+		select(fd + 1, &rdfs, NULL, NULL, NULL);
+		printf("select\n");
+		bytes = read(fd, &ev, sizeof(ev));
+		printf("event\n");
 		if(bytes < 0){
 			printf("read() error\n");
 			break;
 		}
-		if(ev.type==EV_KEY || ev.type == EV_SYN){
-			printf("type: %d, code: %d, value: %d\n", ev.type, ev.code, ev.value);
+		printf("type: %d, code: %d, value: %d\n", ev.type, ev.code, ev.value);
+		if(ev.type==EV_KEY || ev.type == EV_SYN || ev.type == EV_REL || ev.type == EV_ABS){
 			bytes = send(sock_fd, &ev, sizeof(struct input_event), 0);
 
 			if(bytes<0){
