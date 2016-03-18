@@ -19,23 +19,70 @@ const unsigned MAX_TOKEN = 64;
 struct libevdev* create_new_node(const char* identifier) {
 	struct libevdev* dev = libevdev_new();
 	libevdev_set_uniq(dev, identifier);
-	libevdev_set_name(dev, "Gamepad-Server Virtual Device");
+	libevdev_set_id_version(dev, 0x114);
+	libevdev_set_id_vendor(dev, 0x45e);
+	libevdev_set_id_bustype(dev, 0x3);
+	libevdev_set_id_product(dev, 0x28e);
+	//libevdev_set_name(dev, "Gamepad-Server Virtual Device");
+	libevdev_set_name(dev, "Microsoft X-Box 360 pad");
 	libevdev_enable_event_type(dev, EV_KEY);
-	/*
-	libevdev_enable_event_code(dev, EV_KEY, KEY_D, NULL);
-	libevdev_enable_event_code(dev, EV_KEY, KEY_ENTER, NULL);
-	libevdev_enable_event_code(dev, EV_KEY, KEY_NUMLOCK, NULL);
-	libevdev_enable_event_code(dev, EV_KEY, KEY_MINUS, NULL);
-	libevdev_enable_event_code(dev, EV_KEY, KEY_BACKSPACE, NULL);
-	libevdev_enable_event_code(dev, EV_KEY, KEY_COMMA, NULL);
-	libevdev_enable_event_code(dev, EV_KEY, KEY_NUMLOCK, NULL);
-	libevdev_enable_event_code(dev, EV_KEY, KEY_EQUAL, NULL);
-	libevdev_enable_event_code(dev, EV_KEY, 29, NULL);
-	*/
+	libevdev_enable_event_type(dev, EV_ABS);
+	libevdev_enable_event_type(dev, EV_REL);
+
 	int i;
 	for (i = 0; i < 128; i++) {
 		libevdev_enable_event_code(dev, EV_KEY, i, NULL);
 	}
+	// syn types
+	libevdev_enable_event_type(dev, EV_SYN);
+	libevdev_enable_event_code(dev, EV_SYN, SYN_MT_REPORT, NULL);
+	libevdev_enable_event_code(dev, EV_SYN, SYN_DROPPED, NULL);
+	libevdev_enable_event_code(dev, EV_SYN, SYN_REPORT, NULL);
+
+	// buttons
+	libevdev_enable_event_code(dev, EV_KEY, BTN_A, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_B, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_X, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_Y, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_TL, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_TR, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_SELECT, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_START, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_THUMBL, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_THUMBR, NULL);
+
+
+	// rel
+	libevdev_enable_event_code(dev, EV_REL, REL_X, NULL);
+	libevdev_enable_event_code(dev, EV_REL, REL_Y, NULL);
+	libevdev_enable_event_code(dev, EV_REL, REL_Z, NULL);
+	libevdev_enable_event_code(dev, EV_REL, REL_RX, NULL);
+	libevdev_enable_event_code(dev, EV_REL, REL_RY, NULL);
+	libevdev_enable_event_code(dev, EV_REL, REL_RZ, NULL);
+
+	// hacky absinfo from xbox controller
+	struct input_absinfo absinfo = {
+		.value = -2866,
+		.minimum = -32768,
+		.maximum = 32767,
+		.fuzz = 16,
+		.flat = 128
+	};
+
+	// abs
+	libevdev_enable_event_code(dev, EV_ABS, ABS_X, &absinfo);
+	libevdev_enable_event_code(dev, EV_ABS, ABS_Y, &absinfo);
+	libevdev_enable_event_code(dev, EV_ABS, ABS_Z, &absinfo);
+	libevdev_enable_event_code(dev, EV_ABS, ABS_RX, &absinfo);
+	libevdev_enable_event_code(dev, EV_ABS, ABS_RY, &absinfo);
+	libevdev_enable_event_code(dev, EV_ABS, ABS_RZ, &absinfo);
+	libevdev_enable_event_code(dev, EV_ABS, ABS_HAT0X, &absinfo);
+	libevdev_enable_event_code(dev, EV_ABS, ABS_HAT0Y, &absinfo);
+	libevdev_enable_event_code(dev, EV_ABS, ABS_HAT1X, &absinfo);
+	libevdev_enable_event_code(dev, EV_ABS, ABS_HAT1Y, &absinfo);
+	libevdev_enable_event_code(dev, EV_ABS, ABS_HAT2X, &absinfo);
+	libevdev_enable_event_code(dev, EV_ABS, ABS_HAT2Y, &absinfo);
+
 	return dev;
 }
 
@@ -225,7 +272,6 @@ int run_server(struct libevdev_uinput* uidev, int uinput_fd, int sock_fd, char* 
 		}
 	}
 	printf("Shutting down...\n");
-	sock_close(sock_fd);
 	return 0;
 }
 
@@ -265,12 +311,14 @@ int main(int argc, char** argv) {
 	logprintf(log, LOG_INFO, "input device: %s\n", libevdev_uinput_get_devnode(uidev));
 	int uinput_fd = libevdev_uinput_get_fd(uidev);
 
-	int sock_fd = sock_open("localhost", 7999);
+	int sock_fd = sock_open("*", 7999);
 	if (sock_fd < 0) {
 		return -1;
 	}
-	run_server(uidev, uinput_fd, sock_fd, id, password);
-
+	while (!shutdown_server) {
+		run_server(uidev, uinput_fd, sock_fd, id, password);
+	}
+	sock_close(sock_fd);
 	libevdev_uinput_destroy(uidev);
 	libevdev_free(dev);
 	return 0;
