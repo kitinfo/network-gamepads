@@ -293,15 +293,23 @@ int main(int argc, char** argv) {
 		password = "0000";
 	}
 
+	char* port_s = getenv("GAMEPAD_SERVER_PORT");
+	unsigned port = 0;
+
+	if (port_s != NULL) {
+		port = strtoul(port_s, NULL, 10);
+	}
+
+
 	logprintf(log, LOG_INFO, "Starting server...\n");
-/*
+
 	char id[MAX_TOKEN + 1];
 	if (genId(id, MAX_TOKEN) < 0) {
 		return 100;
 	}
 	logprintf(log, LOG_INFO, "generated id: %s\n", id);
-*/
-	char* id = "123456789ABCDEF";
+
+	//char* id = "123456789ABCDEF";
 	struct libevdev* dev = create_new_node(id);
 	struct libevdev_uinput* uidev;
 	if (libevdev_uinput_create_from_device(dev, LIBEVDEV_UINPUT_OPEN_MANAGED, &uidev) != 0) {
@@ -311,7 +319,7 @@ int main(int argc, char** argv) {
 	logprintf(log, LOG_INFO, "input device: %s\n", libevdev_uinput_get_devnode(uidev));
 	int uinput_fd = libevdev_uinput_get_fd(uidev);
 
-	int sock_fd = sock_open("*", 7999);
+	int sock_fd = sock_open("*", port);
 	if (sock_fd < 0) {
 		return -1;
 	}
