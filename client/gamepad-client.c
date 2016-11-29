@@ -122,7 +122,7 @@ char* init_connect(int sock_fd, char* password) {
 int main(int argc, char** argv){
 
 	char* host = getenv("GAMEPAD_SERVER_HOST");
-	char* port = getenv("GAMEPAD_SERVER_POST");
+	char* port = getenv("GAMEPAD_SERVER_PORT");
 	char* password = getenv("GAMEPAD_SERVER_PW");
 	if (host == NULL) {
 		host = "129.13.215.34";
