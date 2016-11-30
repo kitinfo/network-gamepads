@@ -25,8 +25,6 @@ void signal_handler(int param) {
 }
 
 int client_close(gamepad_client* client, bool cleanup){
-	fprintf(stderr, "Closing client connection\n");
-
 	if(cleanup){
 		if(client->ev_input){
 			libevdev_uinput_destroy(client->ev_input);
@@ -38,6 +36,9 @@ int client_close(gamepad_client* client, bool cleanup){
 			client->ev_device = NULL;
 		}
 		client->token[0] = 0;
+	}
+	else{
+		fprintf(stderr, "Closing client connection\n");
 	}
 
 	if(client->fd >= 0){
@@ -109,7 +110,7 @@ int client_data(gamepad_client* client){
 	//check for overfull buffer
 	if(sizeof(client->input_buffer) - client->scan_offset < 10){
 		fprintf(stderr, "Disconnecting spammy client\n");
-		return client_close(client, true);
+		return client_close(client, false);
 	}
 
 	if(!client->passthru){
@@ -130,18 +131,18 @@ int client_data(gamepad_client* client){
 						return client_close(client, true);
 					}
 					token = strtok(NULL, " ");
-					if(token && ((client->input_buffer[0] == 'H' && !strcmp(token, global_password) && !client->token[0]) ||
-								(client->input_buffer[0] == 'C' && !strcmp(token, client->token) && client->token[0]))){
+					if(token && ((client->input_buffer[0] == 'H' && !strcmp(token, global_password)) ||
+								(client->input_buffer[0] == 'C' && !strcmp(token, client->token)))){
 						//update offset
-						client->scan_offset -= u;
+						client->scan_offset -= (u + 1);
 						//copy back
-						memmove(client->input_buffer, client->input_buffer + u, client->scan_offset);
+						memmove(client->input_buffer, client->input_buffer + u + 1, client->scan_offset);
 						//enable passthru
 						client->passthru = true;
 						//notify client
 						send(client->fd, "200 ", 4, 0);
 						send(client->fd, client->token, strlen(client->token) + 1, 0);
-						fprintf(stderr, "Client passthrough enabled\n");
+						fprintf(stderr, "Client passthrough enabled with %zu bytes of data left\n", client->scan_offset);
 					}
 					else{
 						fprintf(stderr, "Disconnecting client with invalid access token\n");
@@ -163,7 +164,7 @@ int client_data(gamepad_client* client){
 		while(client->scan_offset >= sizeof(struct input_event)){
 			//send message
 			libevdev_uinput_write_event(client->ev_input, event->type, event->code, event->value);
-			fprintf(stderr, "Writing event: type:%d, code:%d, value:%d\n", event->type, event->code, event->value);
+			//fprintf(stderr, "Writing event: type:%d, code:%d, value:%d\n", event->type, event->code, event->value);
 			//update offset
 			client->scan_offset -= sizeof(struct input_event);
 			//copy back

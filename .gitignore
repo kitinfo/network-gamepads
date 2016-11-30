@@ -1,2 +1,4 @@
 server/gamepad-server
 client/gamepad-client
+*.swp
+server-ng
