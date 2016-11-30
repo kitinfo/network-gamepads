@@ -1,7 +1,3 @@
-/*
- * copied from /cbdevnet/kbserver
- */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -12,8 +8,8 @@
 #include <unistd.h>
 #include <errno.h>
 
-#include "../network.h"
-#include "../protocol.h"
+#include "network.h"
+#include "protocol.h"
 
 const unsigned MSG_MAX = 256;
 const unsigned TOKEN_LEN = 64;

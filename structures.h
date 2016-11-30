@@ -1,4 +1,4 @@
-#define INPUT_BUFFER_SIZE 1024
+
 
 typedef struct /*_GAMEPAD_CLIENT*/ {
 	int fd;
