@@ -24,21 +24,26 @@ void signal_handler(int param) {
 	shutdown_server = 1;
 }
 
-int client_close(gamepad_client* client){
+int client_close(gamepad_client* client, bool cleanup){
 	fprintf(stderr, "Closing client connection\n");
 
-	if(client->ev_input){
-		libevdev_uinput_destroy(client->ev_input);
-		client->ev_input = NULL;
+	if(cleanup){
+		if(client->ev_input){
+			libevdev_uinput_destroy(client->ev_input);
+			client->ev_input = NULL;
+		}
+
+		if(client->ev_device){
+			libevdev_free(client->ev_device);
+			client->ev_device = NULL;
+		}
+		client->token[0] = 0;
 	}
 
-	if(client->ev_device){
-		libevdev_free(client->ev_device);
-		client->ev_device = NULL;
+	if(client->fd >= 0){
+		close(client->fd);
+		client->fd = -1;
 	}
-
-	close(client->fd);
-	client->fd = -1;
 	client->passthru = false;
 	client->scan_offset = 0;
 	return 0;
@@ -63,14 +68,14 @@ int client_connection(int listener){
 	clients[client_ident].ev_device = evdev_node();
 	if(!clients[client_ident].ev_device){
 		fprintf(stderr, "Failed to create evdev node\n");
-		return client_close(clients + client_ident);
+		return client_close(clients + client_ident, true);
 	}
 
 	//generate libevdev input handle
 	clients[client_ident].ev_input = evdev_input(clients[client_ident].ev_device);
 	if(!clients[client_ident].ev_input){
 		fprintf(stderr, "Failed to create input device\n");
-		return client_close(clients + client_ident);
+		return client_close(clients + client_ident, true);
 	}
 
 	//regenerate reconnection token
@@ -93,10 +98,10 @@ int client_data(gamepad_client* client){
 	//check if closed
 	if(bytes < 0){
 		perror("recv");
-		return client_close(client);
+		return client_close(client, false);
 	}
 	else if(bytes == 0){
-		return client_close(client);
+		return client_close(client, false);
 	}
 
 	client->scan_offset += bytes;
@@ -104,7 +109,7 @@ int client_data(gamepad_client* client){
 	//check for overfull buffer
 	if(sizeof(client->input_buffer) - client->scan_offset < 10){
 		fprintf(stderr, "Disconnecting spammy client\n");
-		return client_close(client);
+		return client_close(client, true);
 	}
 
 	if(!client->passthru){
@@ -122,11 +127,11 @@ int client_data(gamepad_client* client){
 					if(!token || strcmp(token, PROTOCOL_VERSION)){
 						fprintf(stderr, "Disconnecting client with invalid protocol version %s\n", token);
 						send(client->fd, "400 Protocol version mismatch\0", 30, 0);
-						return client_close(client);
+						return client_close(client, true);
 					}
 					token = strtok(NULL, " ");
-					if(token && ((client->input_buffer[0] == 'H' && !strcmp(token, global_password)) ||
-								(client->input_buffer[0] == 'C' && !strcmp(token, client->token)))){
+					if(token && ((client->input_buffer[0] == 'H' && !strcmp(token, global_password) && !client->token[0]) ||
+								(client->input_buffer[0] == 'C' && !strcmp(token, client->token) && client->token[0]))){
 						//update offset
 						client->scan_offset -= u;
 						//copy back
@@ -141,13 +146,13 @@ int client_data(gamepad_client* client){
 					else{
 						fprintf(stderr, "Disconnecting client with invalid access token\n");
 						send(client->fd, "401 Incorrect password or token\0", 32, 0);
-						return client_close(client);
+						return client_close(client, false);
 					}
 				}
 				else{
 					fprintf(stderr, "Disconnecting non-conforming client\n");
 					send(client->fd, "500 Unknown greeting\0", 21, 0);
-					return client_close(client);
+					return client_close(client, true);
 				}
 			}
 		}
@@ -229,6 +234,9 @@ int main(int argc, char** argv) {
 		}
 	}
 
+	for(u = 0; u < MAX_CLIENTS; u++){
+		client_close(clients + u, true);
+	}
 	close(listen_fd);
 	return EXIT_SUCCESS;
 }
