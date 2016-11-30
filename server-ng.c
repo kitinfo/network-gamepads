@@ -6,15 +6,12 @@
 #include <stdint.h>
 
 #define SERVER_VERSION "GamepadServer 1.1"
-#define DEFAULT_PASSWORD "foobar"
-#define DEFAULT_HOST "::"
-#define DEFAULT_PORT "9292"
 #define MAX_CLIENTS 8
-#define TOKEN_SIZE 16
 
+#include "network.h"
+#include "protocol.h"
 #include "evdev.h"
 #include "structures.h"
-#include "network.h"
 
 volatile sig_atomic_t shutdown_server = 0;
 char* global_password = NULL;

@@ -12,44 +12,27 @@
 #include <unistd.h>
 #include <errno.h>
 
-#include "sockfd.c"
-
-const char* version = "1.0";
+#include "../network.h"
+#include "../protocol.h"
 
 const unsigned MSG_MAX = 256;
 const unsigned TOKEN_LEN = 64;
 
 int continue_connect(int sock_fd, char* token) {
-
-	unsigned token_len = strlen(token);
-
-	if (token_len > TOKEN_LEN) {
-		printf("Token too long.\n");
-		return -1;
-	}
-
-	char* cont = "CONTINUE";
-
-	unsigned msg_len = strlen(cont) + 1 + strlen(version) + 1 + token_len + 1;
-
+	ssize_t bytes = 0;
 	char msg[MSG_MAX + 1];
 
-	if (msg_len > MSG_MAX) {
-		printf("Message is too long.\n");
+	bytes = snprintf(msg, MSG_MAX, "CONTINUE %s %s\n", PROTOCOL_VERSION, token);
+	if(bytes >= MSG_MAX) {
+		printf("Message would have been too long\n");
 		return -1;
 	}
 
-	snprintf(msg, msg_len + 1, "%s %s %s\n", cont, version, token);
-
-	int bytes = 0;
-	if (sock_send(sock_fd, msg) < 0) {
-		perror("continue_connect/send");
-	}
+	send(sock_fd, msg, bytes + 1, 0);
 	memset(msg, 0, MSG_MAX + 1);
 
 	bytes = recv(sock_fd, msg, MSG_MAX, 0);
-
-	if (bytes < 0) {
+	if(bytes < 0) {
 		perror("continue_connect/recv");
 		return -1;
 	}
@@ -61,37 +44,22 @@ int continue_connect(int sock_fd, char* token) {
 		printf("Unkown error (%s)", msg + 4);
 		return -1;
 	}
-
 	return 1;
 }
 
 char* init_connect(int sock_fd, char* password) {
-
-	unsigned pw_len = strlen(password);
-
-	if (pw_len > 64) {
-		printf("Password is too long (limit is 64 characters).\n");
-		return NULL;
-	}
-
-	char* hello = "HELLO";
-
-	unsigned msg_len = strlen(hello) + 1 + strlen(version) + 1 + pw_len;
-
-	if (msg_len > MSG_MAX) {
-		printf("Message too long.\n");
-		return NULL;
-	}
-
+	ssize_t bytes;
 	char msg[MSG_MAX + 1];
-	memset(msg, 0, MSG_MAX +1);
-	snprintf(msg, msg_len + 1, "%s %s %s", hello, version, password);
-	int bytes = 0;
-	if (sock_send(sock_fd, msg) < 0) {
-			perror("init_connect/send");
-			return NULL;
+
+	bytes = snprintf(msg, MSG_MAX, "HELLO %s %s", PROTOCOL_VERSION, password);
+	if(bytes >= MSG_MAX) {
+		printf("Generated message would have been too long\n");
+		return NULL;
 	}
-	memset(msg, 0, msg_len + 1);
+
+	send(sock_fd, msg, bytes + 1, 0);
+
+	memset(msg, 0, sizeof(msg));
 	bytes = recv(sock_fd, msg, MSG_MAX, 0);
 
 	if (bytes < 0) {
@@ -100,15 +68,15 @@ char* init_connect(int sock_fd, char* password) {
 	}
 
 	if (!strncmp(msg, "401", 3)) {
-		printf("Password is wrong.\n");
+		printf("Invalid password supplied\n");
 		return NULL;
 	} else if (!strncmp(msg, "402", 3)) {
 		char* s_version = msg + 4;
-		printf("Version not matched (Server: %s != Client %s).\n", s_version, version);
+		printf("Version not matched (Server: %s != Client %s)\n", s_version, PROTOCOL_VERSION);
 		return NULL;
 	} else if (strncmp(msg, "200", 3)) {
 		char* error = msg + 4;
-		printf("Unkown error(%s)\n", error);
+		printf("Unkown error (%s)\n", error);
 		return NULL;
 	}
 
@@ -120,86 +88,56 @@ char* init_connect(int sock_fd, char* password) {
 }
 
 int main(int argc, char** argv){
+	char* host = getenv("SERVER_HOST") ? getenv("SERVER_HOST"):DEFAULT_HOST;
+	char* port = getenv("SERVER_PORT") ? getenv("SERVER_PORT"):DEFAULT_PORT;
+	char* password = getenv("SERVER_PW") ? getenv("SERVER_PW"):DEFAULT_PASSWORD;
 
-	char* host = getenv("GAMEPAD_SERVER_HOST");
-	char* port = getenv("GAMEPAD_SERVER_PORT");
-	char* password = getenv("GAMEPAD_SERVER_PW");
-	if (host == NULL) {
-		host = "129.13.215.34";
-	}
-
-	if (port == NULL) {
-		port = "7999";
-	}
-
-	if (password == NULL) {
-		password = "";
-	}
-
-	unsigned port_num = strtoul(port, NULL, 10);
-
-	char* input_device=NULL;
-	int fd, bytes, sock_fd;
+	int event_fd, sock_fd;
+	ssize_t bytes;
 	struct input_event ev;
 
-	if(argc<2){
+	if(argc < 2){
 		printf("Insufficient arguments\n");
-		exit(1);
+		return EXIT_FAILURE;
 	}
 
-	input_device=argv[1];
-
-	printf("input_device: %s\n", input_device);
-	fd=open(input_device, O_RDONLY);
-	if(fd<0){
+	printf("Reading input events from %s\n", argv[1]);
+	event_fd = open(argv[1], O_RDONLY);
+	if(event_fd < 0){
 		printf("Failed to open device\n");
-		return 1;
+		return EXIT_FAILURE;
 	}
 
-	if (!isatty(fileno(stdout))) {
-		setbuf(stdout, NULL);
-	}
-
-	sock_fd = sock_open(host, port_num);
-
-	if (sock_fd < 0) {
-		printf("Cannot connect to server (%s:%d).\n", host, port_num);
+	sock_fd = tcp_connect(host, port);
+	if(sock_fd < 0) {
+		printf("Failed to reach server at %s port %s\n", host, port);
 		return 2;
 	}
 
 	char* token = init_connect(sock_fd, password);
-
 	if (token == NULL) {
 		return 3;
 	}
 
-	fd_set rdfs;
-
-	FD_ZERO(&rdfs);
-	FD_SET(fd, &rdfs);
-
 	//get exclusive control
- 	bytes=ioctl(fd, EVIOCGRAB, 1);
+ 	bytes = ioctl(event_fd, EVIOCGRAB, 1);
 
 	while(true){
-		printf("preselect\n");
-		select(fd + 1, &rdfs, NULL, NULL, NULL);
-		printf("select\n");
-		bytes = read(fd, &ev, sizeof(ev));
-		printf("event\n");
+		//block on read
+		bytes = read(event_fd, &ev, sizeof(ev));
 		if(bytes < 0){
 			printf("read() error\n");
 			break;
 		}
-		printf("type: %d, code: %d, value: %d\n", ev.type, ev.code, ev.value);
-		if(ev.type==EV_KEY || ev.type == EV_SYN || ev.type == EV_REL || ev.type == EV_ABS){
+		if(bytes == sizeof(ev) && 
+				(ev.type == EV_KEY || ev.type == EV_SYN || ev.type == EV_REL || ev.type == EV_ABS)){
+			printf("Event type:%d, code:%d, value:%d\n", ev.type, ev.code, ev.value);
 			bytes = send(sock_fd, &ev, sizeof(struct input_event), 0);
 
-			if(bytes<0){
-				// check if connection is closed
-				if (errno == ECONNRESET) {
+			if(bytes < 0){
+				//check if connection is closed
+				if(errno == ECONNRESET) {
 					int status = continue_connect(sock_fd, token);
-
 					if (status == 0) { // reconnect is failed, trying init_connect
 						free(token);
 						token = init_connect(sock_fd, password);
@@ -216,8 +154,12 @@ int main(int argc, char** argv){
 				}
 			}
 		}
+		else{
+			fprintf(stderr, "Short read from event descriptor (%zd bytes)\n", bytes);
+		}
 	}
-	close(fd);
+
+	close(event_fd);
 	close(sock_fd);
 
 	return 0;

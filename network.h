@@ -5,7 +5,6 @@
 #include <string.h>
 #include <errno.h>
 
-#define PROTOCOL_VERSION "1.0"
 #define LISTEN_QUEUE_LENGTH 128
 
 int tcp_connect(char* host, char* port){
