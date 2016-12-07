@@ -1,8 +1,19 @@
-.PHONY: clean run
+.PHONY: clean run install
+PREFIX ?= $(DESTDIR)/usr/bin
 CFLAGS ?= -Wall -g -I/usr/include/libevdev-1.0
 server-ng: LDLIBS = -levdev
 
 all: server-ng client
 
+install-server:
+	mv server-ng input-server
+	install -m 0755 input-server "$(PREFIX)"
+
+install-client:
+	mv client input-client
+	install -m 0755 input-client "$(PREFIX)"
+
+install: install-client install-server
+
 clean:
-	$(RM) server-ng client
+	$(RM) server-ng client input-server input-client
