@@ -1,50 +1,59 @@
-A Token is not longer than 64 characters.
-A message is maximal 256 characters long.
-Every message must be finished by a null byte ('\0').
+Basic parameters
+	The length of a token or password MUST NOT exceed 64 bytes
+	The length of a single message MUST NOT exceed 256 bytes
+	Every message MUST BE terminated by a zero byte
+	The protocol version described in this document is "1.0"
+	Server responses will always be preceded by a 3-byte status code
 
-== First connection ==
+== Initial connection ==
 
-First the client sends the hello message to the server.
-=> HELLO <version> <password>
-<version> is the client version.
-<password> is the password for this server.
+After establishing the initial TCP connection to the server, the client
+initiates a HELLO request of the form
 
-If everything is ok the server answers with:
-<= 200 <token>
-<token> is the connection token (for reconnecting when the connection is
-lost).
-You can now transfer the evdev tokens.
+	HELLO <version> <password>
 
-On error the server can answer one of the following messages:
-<= 400 Version not matched (Server: <server>, Client: <client>)
-The version of the server and of the client don't match.
-<server> is the server version and <client> is the client version.
+with <version> representing the protocol version implemented by the client
+and <password> representing a pre-configured shared password to the server.
 
-<= 401 Wrong password
-The password is wrong.
+Upon successful authentication, the server replies with
 
-<= 405 No Password supplied
-There is no password supplied (Or no version).
+	200 <token>
 
-== Reconnect ==
-If you lost the connection to the server you can try to reconnect.
-This can be done with sending a CONTINUE request.
+with <token> being a reconnection passphrase to be used when re-establishing
+a lost connection. The token will guarantee that a client is always assigned the
+same input device on the server.
 
-=> CONTINUE <version> <token>
-<version> is the client version.
-<token> is the token received by the first connection.
+After receiving the 200 message, the client is put into pass-through mode and
+may begin sending `struct input_event` binary data.
 
-The server answers (if everything is ok) with:
-<= 200 <token>
-You can now begin to transfer the evdev events.
+Upon failure, the server may respond with any of
 
-On error the server can ansẃer with on of the following messages:
-<= 400 Version not matched (Server: <server>, Client: <client>)
-The version of the server and of the client don't match.
-<server> is the server version and <client> is the client version.
+	400 Version not matched (Server: <server>, Client: <client>)
+	401 Wrong password
+	405 No Password supplied
 
-<= 406 No Token supplied
-The server couldn't find the token or version in the message.
+and terminate the connection.
 
-<= 403 Token expired
-The token is no longer active. Try an hello request.
+== Reconnecting a client ==
+Upon losing the connection to a server, a client may reconnect and be assigned
+the same input device again by presenting the reconnection token transmitted in
+response to the initial HELLO request. To do so, the client opens a TCP
+connection and transmits
+
+	CONTINUE <version> <token>
+
+with <version> being the client protocol version and <token> the reconnection
+token.
+
+Upon successful reconnection, the server answers with 
+
+	200 <token>
+
+where <token> again represents a token to be used in further CONTINUE requests.
+The client is then again put in pass-through mode.
+
+Upon failure, the server may respond with any of the failure codes mentioned
+in the previous section, as well as
+
+	406 No Token supplied
+	403 Token expired

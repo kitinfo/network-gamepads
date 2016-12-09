@@ -78,8 +78,15 @@ on the computer running the server.
 
 ## Realization
 
-TBD
+The client component first tries to open the supplied device node for exclusive access, preventing other
+clients such as X11/xorg from also reacting to the input (Hence why starting the client on primary input devices is
+not really advisable). After opening the device node, the client reads `struct input_event` data objects and sends them
+to the server.
+
+The server uses libevdev to create virtual device nodes and inject the streamed events (after filtering them somewhat)
+into them. The events are then processed by the X server on the remote machine and treated as if the input devices
+were attached directly.
 
 ## Protocol
 
-TBD
+A detailed description of the protocol may be found in [protocol/protocol.txt](protocol/protocol.txt)
