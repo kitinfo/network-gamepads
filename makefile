@@ -5,11 +5,11 @@ server-ng: LDLIBS = -levdev
 
 all: server-ng client
 
-install-server:
+install-server: server-ng
 	mv server-ng input-server
 	install -m 0755 input-server "$(PREFIX)"
 
-install-client:
+install-client: client
 	mv client input-client
 	install -m 0755 input-client "$(PREFIX)"
 
