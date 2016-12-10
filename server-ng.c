@@ -239,8 +239,7 @@ int main(int argc, char** argv) {
 	char* bindhost = getenv("SERVER_HOST") ? getenv("SERVER_HOST"):DEFAULT_HOST;
 	char* port = getenv("SERVER_PORT") ? getenv("SERVER_PORT"):DEFAULT_PORT;
 	global_password = getenv("SERVER_PW") ? getenv("SERVER_PW"):DEFAULT_PASSWORD;
-	fprintf(stderr, "%s starting\n", SERVER_VERSION);
-
+	fprintf(stderr, "%s starting\nProtocol Version: %s\n", SERVER_VERSION, PROTOCOL_VERSION);
 	int listen_fd = tcp_listener(bindhost, port);
 	if(listen_fd < 0){
 		fprintf(stderr, "Failed to open listener\n");
