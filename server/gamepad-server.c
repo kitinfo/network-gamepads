@@ -30,7 +30,7 @@ struct libevdev* create_new_node(const char* identifier) {
 	libevdev_enable_event_type(dev, EV_REL);
 
 	int i;
-	for (i = 0; i < 128; i++) {
+	for (i = 0; i < 256; i++) {
 		libevdev_enable_event_code(dev, EV_KEY, i, NULL);
 	}
 	// syn types
@@ -50,6 +50,12 @@ struct libevdev* create_new_node(const char* identifier) {
 	libevdev_enable_event_code(dev, EV_KEY, BTN_START, NULL);
 	libevdev_enable_event_code(dev, EV_KEY, BTN_THUMBL, NULL);
 	libevdev_enable_event_code(dev, EV_KEY, BTN_THUMBR, NULL);
+	
+	
+	libevdev_enable_event_code(dev, EV_KEY, BTN_MOUSE, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_LEFT, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_RIGHT, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_MIDDLE, NULL);
 
 
 	// rel
@@ -293,11 +299,14 @@ int main(int argc, char** argv) {
 		password = "0000";
 	}
 
+	logprintf(log, LOG_INFO, "Password is %s\n", password);
+
 	char* port_s = getenv("GAMEPAD_SERVER_PORT");
 	unsigned port = 0;
 
 	if (port_s != NULL) {
 		port = strtoul(port_s, NULL, 10);
+		logprintf(log, LOG_INFO, "Port is %d\n", port);
 	}
 
 
