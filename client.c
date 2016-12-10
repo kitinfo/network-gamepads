@@ -85,7 +85,7 @@ char* init_connect(int sock_fd, struct libevdev* evdev, char* password) {
 	if (!strncmp(msg, "401", 3)) {
 		printf("Invalid password supplied\n");
 		return NULL;
-	} else if (!strncmp(msg, "402", 3)) {
+	} else if (!strncmp(msg, "400", 3)) {
 		char* s_version = msg + 4;
 		printf("Version not matched (Server: %s != Client %s)\n", s_version, PROTOCOL_VERSION);
 		return NULL;
