@@ -126,7 +126,7 @@ int main(int argc, char** argv){
 			break;
 		}
 		if(bytes == sizeof(ev) && 
-				(ev.type == EV_KEY || ev.type == EV_SYN || ev.type == EV_REL || ev.type == EV_ABS)){
+				(ev.type == EV_KEY || ev.type == EV_SYN || ev.type == EV_REL || ev.type == EV_ABS || ev.type == EV_MSC)){
 			printf("Event type:%d, code:%d, value:%d\n", ev.type, ev.code, ev.value);
 			bytes = send(sock_fd, &ev, sizeof(struct input_event), 0);
 
@@ -151,7 +151,11 @@ int main(int argc, char** argv){
 			}
 		}
 		else{
-			fprintf(stderr, "Short read from event descriptor (%zd bytes)\n", bytes);
+			if (bytes == sizeof(ev)) {
+				fprintf(stderr, "Unsupported event type (type = %d)\n", ev.type);
+			} else {
+				fprintf(stderr, "Short read from event descriptor (%zd bytes)\n", bytes);
+			}
 		}
 	}
 
