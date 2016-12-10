@@ -38,6 +38,12 @@ struct libevdev* evdev_node(){
 	libevdev_enable_event_code(dev, EV_KEY, BTN_THUMBL, NULL);
 	libevdev_enable_event_code(dev, EV_KEY, BTN_THUMBR, NULL);
 
+	// mouse clicks
+	libevdev_enable_event_code(dev, EV_KEY, BTN_MOUSE, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_LEFT, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_RIGHT, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_MIDDLE, NULL);
+
 	// rel
 	libevdev_enable_event_code(dev, EV_REL, REL_X, NULL);
 	libevdev_enable_event_code(dev, EV_REL, REL_Y, NULL);
