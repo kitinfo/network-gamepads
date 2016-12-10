@@ -161,7 +161,7 @@ int client_data(gamepad_client* client){
 		while(client->scan_offset >= sizeof(struct input_event)){
 			//send message
 			libevdev_uinput_write_event(client->ev_input, event->type, event->code, event->value);
-			//fprintf(stderr, "Writing event: client:%d, type:%d, code:%d, value:%d\n", clients - client, event->type, event->code, event->value);
+			//fprintf(stderr, "Writing event: client:%zu, type:%d, code:%d, value:%d\n", client - clients, event->type, event->code, event->value);
 			//update offset
 			client->scan_offset -= sizeof(struct input_event);
 			//copy back
