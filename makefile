@@ -1,7 +1,7 @@
 .PHONY: clean run install
 PREFIX ?= $(DESTDIR)/usr/bin
 CFLAGS ?= -Wall -g -I/usr/include/libevdev-1.0
-server-ng: LDLIBS = -levdev
+LDLIBS ?= -levdev
 
 all: server-ng client
 

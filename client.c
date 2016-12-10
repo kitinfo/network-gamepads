@@ -7,6 +7,7 @@
 #include <linux/input.h>
 #include <unistd.h>
 #include <errno.h>
+#include <libevdev/libevdev.h>
 
 #include "network.h"
 #include "protocol.h"
@@ -43,11 +44,29 @@ int continue_connect(int sock_fd, char* token) {
 	return 1;
 }
 
-char* init_connect(int sock_fd, char* password) {
+char* init_connect(int sock_fd, struct libevdev* evdev, char* password) {
 	ssize_t bytes;
 	char msg[MSG_MAX + 1];
+	int i;
 
-	bytes = snprintf(msg, MSG_MAX, "HELLO %s %s", PROTOCOL_VERSION, password);
+	int vendor_id = libevdev_get_id_vendor(evdev);
+	int product_id = libevdev_get_id_product(evdev);
+	char* dev_name = strdup(libevdev_get_name(evdev));
+
+	if (strlen(dev_name) > 100) {
+		dev_name[100] = 0;
+	}
+
+	for (i = 0; i < strlen(dev_name); i++) {
+		if (dev_name[i] == ' ') {
+			dev_name[i] = '_';
+		}
+	}
+
+	bytes = snprintf(msg, MSG_MAX, "HELLO %s 0x%.4x/0x%.4x/%s %s", PROTOCOL_VERSION, vendor_id, product_id, dev_name, password);
+	free(dev_name);
+	
+	fprintf(stderr, "Generated message: %s\n", msg);
 	if(bytes >= MSG_MAX) {
 		printf("Generated message would have been too long\n");
 		return NULL;
@@ -91,6 +110,7 @@ int main(int argc, char** argv){
 	int event_fd, sock_fd;
 	ssize_t bytes;
 	struct input_event ev;
+	struct libevdev* evdev;
 
 	if(argc < 2){
 		printf("Insufficient arguments\n");
@@ -104,13 +124,18 @@ int main(int argc, char** argv){
 		return EXIT_FAILURE;
 	}
 
+	if (libevdev_new_from_fd(event_fd, &evdev)) {
+		perror("Cannot open device with libevdev.\n");
+		return 2;
+	}
+
 	sock_fd = tcp_connect(host, port);
 	if(sock_fd < 0) {
 		printf("Failed to reach server at %s port %s\n", host, port);
 		return 2;
 	}
 
-	char* token = init_connect(sock_fd, password);
+	char* token = init_connect(sock_fd, evdev, password);
 	if (token == NULL) {
 		return 3;
 	}
@@ -125,7 +150,7 @@ int main(int argc, char** argv){
 			printf("read() error\n");
 			break;
 		}
-		if(bytes == sizeof(ev) && 
+		if(bytes == sizeof(ev) &&
 				(ev.type == EV_KEY || ev.type == EV_SYN || ev.type == EV_REL || ev.type == EV_ABS || ev.type == EV_MSC)){
 			printf("Event type:%d, code:%d, value:%d\n", ev.type, ev.code, ev.value);
 			bytes = send(sock_fd, &ev, sizeof(struct input_event), 0);
@@ -136,7 +161,7 @@ int main(int argc, char** argv){
 					int status = continue_connect(sock_fd, token);
 					if (status == 0) { // reconnect is failed, trying init_connect
 						free(token);
-						token = init_connect(sock_fd, password);
+						token = init_connect(sock_fd, evdev, password);
 						if (token == NULL) { // cannot reconnect to server
 							printf("Cannot reconnect to server.\n");
 							break;
@@ -158,7 +183,7 @@ int main(int argc, char** argv){
 			}
 		}
 	}
-
+	libevdev_free(evdev);
 	close(event_fd);
 	close(sock_fd);
 

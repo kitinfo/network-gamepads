@@ -33,6 +33,7 @@ int client_close(gamepad_client* client, bool cleanup){
 			client->ev_device = NULL;
 		}
 		client->token[0] = 0;
+		free(client->dev_name);
 	}
 	else{
 		fprintf(stderr, "Closing client connection\n");
@@ -62,20 +63,6 @@ int client_connection(int listener){
 	fprintf(stderr, "New client in slot %zu\n", client_ident);
 	clients[client_ident].fd = accept(listener, NULL, NULL);
 
-	//generate libevdev device
-	clients[client_ident].ev_device = evdev_node();
-	if(!clients[client_ident].ev_device){
-		fprintf(stderr, "Failed to create evdev node\n");
-		return client_close(clients + client_ident, true);
-	}
-
-	//generate libevdev input handle
-	clients[client_ident].ev_input = evdev_input(clients[client_ident].ev_device);
-	if(!clients[client_ident].ev_input){
-		fprintf(stderr, "Failed to create input device\n");
-		return client_close(clients + client_ident, true);
-	}
-
 	//regenerate reconnection token
 	if(!clients[client_ident].token[0]){
 		for(u = 0; u < TOKEN_SIZE; u++){
@@ -85,14 +72,74 @@ int client_connection(int listener){
 	return 0;
 }
 
+bool read_device_data(char* token, gamepad_client* client) {
+
+	char* end;
+	client->vendor_id = strtoul(token, &end, 16);
+
+	if (token == end) {
+		fprintf(stderr, "Cannot parse vendor id.\n");
+		return false;
+	}
+
+	token = end;
+
+	if (token[0] != '/') {
+		fprintf(stderr, "Wrong input format (/ not found)\n");
+		return false;
+	}
+
+	token++;
+	client->product_id = strtoul(token, &end, 16);
+	if (token == end) {
+		fprintf(stderr, "Cannot parse product id.\n");
+		return false;
+	}
+
+	token = end;
+	if (token[0] != '/') {
+		fprintf(stderr, "Wrong input format (/ not found)\n");
+		return false;
+	}
+	token++;
+
+	int i;
+	for (i = 0; i < strlen(token); i++) {
+		if (token[i] == '_') {
+			token[i] = ' ';
+		}
+	}
+
+	client->dev_name = strdup(token);
+
+	return true;
+}
+int create_node(gamepad_client* client) {
+	//generate libevdev device
+	client->ev_device = evdev_node(client->vendor_id, client->product_id, client->dev_name);
+	if(!client->ev_device){
+		fprintf(stderr, "Failed to create evdev node\n");
+		return client_close(client, true);
+	}
+
+	//generate libevdev input handle
+	client->ev_input = evdev_input(client->ev_device);
+	if(!client->ev_input){
+		fprintf(stderr, "Failed to create input device\n");
+		return client_close(client, true);
+	}
+
+	return 0;
+}
 int client_data(gamepad_client* client){
 	ssize_t bytes;
 	size_t u;
 	struct input_event* event = (struct input_event*) client->input_buffer;
 	char* token = NULL;
+	char* device_part;
 
 	bytes = recv(client->fd, client->input_buffer + client->scan_offset, sizeof(client->input_buffer) - client->scan_offset, 0);
-	
+
 	//check if closed
 	if(bytes < 0){
 		perror("recv");
@@ -103,7 +150,7 @@ int client_data(gamepad_client* client){
 	}
 
 	client->scan_offset += bytes;
-	
+
 	//check for overfull buffer
 	if(sizeof(client->input_buffer) - client->scan_offset < 10){
 		fprintf(stderr, "Disconnecting spammy client\n");
@@ -127,7 +174,17 @@ int client_data(gamepad_client* client){
 						send(client->fd, "400 Protocol version mismatch\0", 30, 0);
 						return client_close(client, true);
 					}
+					device_part = strtok(NULL, " ");
+					if (!device_part) {
+						fprintf(stderr, "Missing protocol part.\n");
+						send(client->fd, "500 Missing protocol part\0", 26, 0);
+						return client_close(client, true);
+					}
 					token = strtok(NULL, " ");
+					if (!read_device_data(device_part, client)) {
+						send(client->fd, "500 Wrong device part\0", 22, 0);
+						return client_close(client, true);
+					}
 					if(token && ((client->input_buffer[0] == 'H' && !strcmp(token, global_password)) ||
 								(client->input_buffer[0] == 'C' && !strcmp(token, client->token)))){
 						//update offset
@@ -140,6 +197,7 @@ int client_data(gamepad_client* client){
 						send(client->fd, "200 ", 4, 0);
 						send(client->fd, client->token, strlen(client->token) + 1, 0);
 						fprintf(stderr, "Client passthrough enabled with %zu bytes of data left\n", client->scan_offset);
+						return create_node(client);
 					}
 					else{
 						fprintf(stderr, "Disconnecting client with invalid access token\n");
@@ -181,7 +239,6 @@ int main(int argc, char** argv) {
 	char* bindhost = getenv("SERVER_HOST") ? getenv("SERVER_HOST"):DEFAULT_HOST;
 	char* port = getenv("SERVER_PORT") ? getenv("SERVER_PORT"):DEFAULT_PORT;
 	global_password = getenv("SERVER_PW") ? getenv("SERVER_PW"):DEFAULT_PASSWORD;
-	
 	fprintf(stderr, "%s starting\n", SERVER_VERSION);
 
 	int listen_fd = tcp_listener(bindhost, port);

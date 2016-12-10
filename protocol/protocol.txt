@@ -1,8 +1,8 @@
 Basic parameters
 	The length of a token or password MUST NOT exceed 64 bytes
-	The length of a single message MUST NOT exceed 256 bytes
+	The length of a single message MUST NOT exceed 512 bytes
 	Every message MUST BE terminated by a zero byte
-	The protocol version described in this document is "1.0"
+	The protocol version described in this document is "1.1"
 	Server responses will always be preceded by a 3-byte status code
 
 == Initial connection ==
@@ -10,9 +10,13 @@ Basic parameters
 After establishing the initial TCP connection to the server, the client
 initiates a HELLO request of the form
 
-	HELLO <version> <password>
+	HELLO <version> <vendor_id>/<product_id>/<short_name> <password>
 
-with <version> representing the protocol version implemented by the client
+with <version> representing the protocol version implemented by the client,
+<vendor_id> representing the vendor_id of the device,
+<product_id> representing the product_id of the device,
+<short_name> representing a short_name of the product
+(not more then 100 characters)
 and <password> representing a pre-configured shared password to the server.
 
 Upon successful authentication, the server replies with
