@@ -47,26 +47,21 @@ int continue_connect(int sock_fd, char* token) {
 char* init_connect(int sock_fd, struct libevdev* evdev, char* password) {
 	ssize_t bytes;
 	char msg[MSG_MAX + 1];
-	int i;
 
 	int vendor_id = libevdev_get_id_vendor(evdev);
 	int product_id = libevdev_get_id_product(evdev);
+	int bustype = libevdev_get_id_bustype(evdev);
+	int version = libevdev_get_id_version(evdev);
 	char* dev_name = strdup(libevdev_get_name(evdev));
+	unsigned int devtype = 0;
 
 	if (strlen(dev_name) > 100) {
 		dev_name[100] = 0;
 	}
 
-	for (i = 0; i < strlen(dev_name); i++) {
-		if (dev_name[i] == ' ') {
-			dev_name[i] = '_';
-		}
-	}
-
-	bytes = snprintf(msg, MSG_MAX, "HELLO %s 0x%.4x/0x%.4x/%s %s", PROTOCOL_VERSION, vendor_id, product_id, dev_name, password);
+	bytes = snprintf(msg, MSG_MAX, "HELLO %s\nVENDOR 0x%.4x\nPRODUCT 0x%.4x\nBUSTYPE 0x%.4x\nDEVTYPE %d\nVERSION 0x%.4x\nNAME %s\nPASSWORD %s\n\n", PROTOCOL_VERSION, vendor_id, product_id, bustype, devtype, version, dev_name, password);
 	free(dev_name);
-	
-	fprintf(stderr, "Generated message: %s\n", msg);
+	fprintf(stderr, "Generated message: %s", msg);
 	if(bytes >= MSG_MAX) {
 		printf("Generated message would have been too long\n");
 		return NULL;
@@ -81,7 +76,7 @@ char* init_connect(int sock_fd, struct libevdev* evdev, char* password) {
 		perror("init_connect/recv");
 		return NULL;
 	}
-
+	fprintf(stderr, "Answer: %s\n", msg);
 	if (!strncmp(msg, "401", 3)) {
 		printf("Invalid password supplied\n");
 		return NULL;

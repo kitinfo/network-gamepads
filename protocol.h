@@ -1,4 +1,4 @@
-#define PROTOCOL_VERSION "1.1"
+#define PROTOCOL_VERSION "2.0"
 #define INPUT_BUFFER_SIZE 1024
 #define DEFAULT_PASSWORD "foobar"
 #define DEFAULT_HOST "::"
