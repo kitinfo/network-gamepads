@@ -16,10 +16,6 @@ struct libevdev* evdev_node(int vendor_id, int product_id, char* dev_name){
 	libevdev_enable_event_type(dev, EV_ABS);
 	libevdev_enable_event_type(dev, EV_REL);
 
-	for (i = 0; i < 128; i++) {
-		libevdev_enable_event_code(dev, EV_KEY, i, NULL);
-	}
-
 	// syn types
 	libevdev_enable_event_type(dev, EV_SYN);
 	libevdev_enable_event_code(dev, EV_SYN, SYN_MT_REPORT, NULL);
@@ -27,6 +23,7 @@ struct libevdev* evdev_node(int vendor_id, int product_id, char* dev_name){
 	libevdev_enable_event_code(dev, EV_SYN, SYN_REPORT, NULL);
 
 	// buttons
+	libevdev_enable_event_type(dev, EV_KEY);
 	libevdev_enable_event_code(dev, EV_KEY, BTN_A, NULL);
 	libevdev_enable_event_code(dev, EV_KEY, BTN_B, NULL);
 	libevdev_enable_event_code(dev, EV_KEY, BTN_X, NULL);
@@ -37,6 +34,9 @@ struct libevdev* evdev_node(int vendor_id, int product_id, char* dev_name){
 	libevdev_enable_event_code(dev, EV_KEY, BTN_START, NULL);
 	libevdev_enable_event_code(dev, EV_KEY, BTN_THUMBL, NULL);
 	libevdev_enable_event_code(dev, EV_KEY, BTN_THUMBR, NULL);
+	for (i = 0; i < 128; i++) {
+		libevdev_enable_event_code(dev, EV_KEY, i, NULL);
+	}
 
 	// mouse clicks
 	libevdev_enable_event_code(dev, EV_KEY, BTN_MOUSE, NULL);
@@ -46,6 +46,7 @@ struct libevdev* evdev_node(int vendor_id, int product_id, char* dev_name){
 	libevdev_enable_event_code(dev, EV_REL, REL_WHEEL, NULL);
 
 	// rel
+	libevdev_enable_event_type(dev, EV_REL);
 	libevdev_enable_event_code(dev, EV_REL, REL_X, NULL);
 	libevdev_enable_event_code(dev, EV_REL, REL_Y, NULL);
 	libevdev_enable_event_code(dev, EV_REL, REL_Z, NULL);
@@ -63,6 +64,7 @@ struct libevdev* evdev_node(int vendor_id, int product_id, char* dev_name){
 	};
 
 	// abs
+	libevdev_enable_event_type(dev, EV_ABS);
 	libevdev_enable_event_code(dev, EV_ABS, ABS_X, &absinfo);
 	libevdev_enable_event_code(dev, EV_ABS, ABS_Y, &absinfo);
 	libevdev_enable_event_code(dev, EV_ABS, ABS_Z, &absinfo);
