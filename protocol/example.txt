@@ -1,0 +1,9 @@
+HELLO 2.0
+VENDOR 0x1234
+PRODUCT 0x1234
+BUSTYPE 0x0011
+DEVTYPE 0
+VERSION 0x0001
+NAME hello world and more and more
+PASSWORD foobarfoobarfoobarfoobarfoobar
+

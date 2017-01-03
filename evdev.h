@@ -1,17 +1,33 @@
 #include <libevdev/libevdev.h>
 #include <libevdev/libevdev-uinput.h>
 
-struct libevdev* evdev_node(int vendor_id, int product_id, char* dev_name){
+enum DEV_TYPE {
+	DEV_TYPE_UNKOWN = 0,
+	DEV_TYPE_MICE = 1,
+	DEV_TYPE_GAMEPAD = 2,
+	DEV_TYPE_KEYBOARD  = 3
+};
+
+struct device_meta {
+	int vendor_id;
+	int product_id;
+	int bustype;
+	int devtype;
+	int version;
+	char* name;
+};
+
+struct libevdev* evdev_node(struct device_meta* meta){
 	int i;
 	struct libevdev* dev = libevdev_new();
 
 	//libevdev_set_uniq(dev, "23456");
-	libevdev_set_id_version(dev, 0x114);
-	libevdev_set_id_vendor(dev, vendor_id);
-	libevdev_set_id_bustype(dev, 0x3);
-	libevdev_set_id_product(dev, product_id);
+	libevdev_set_id_version(dev, meta->version);
+	libevdev_set_id_vendor(dev, meta->vendor_id);
+	libevdev_set_id_bustype(dev, meta->bustype);
+	libevdev_set_id_product(dev, meta->product_id);
 	//libevdev_set_name(dev, "Gamepad-Server Virtual Device");
-	libevdev_set_name(dev, dev_name);
+	libevdev_set_name(dev, meta->name);
 	libevdev_enable_event_type(dev, EV_KEY);
 	libevdev_enable_event_type(dev, EV_ABS);
 	libevdev_enable_event_type(dev, EV_REL);

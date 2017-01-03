@@ -72,71 +72,118 @@ int client_connection(int listener){
 	return 0;
 }
 
-bool read_device_data(char* token, gamepad_client* client) {
-
-	char* end;
-	client->vendor_id = strtoul(token, &end, 16);
-
-	if (token == end) {
-		fprintf(stderr, "Cannot parse vendor id.\n");
-		return false;
-	}
-
-	token = end;
-
-	if (token[0] != '/') {
-		fprintf(stderr, "Wrong input format (/ not found)\n");
-		return false;
-	}
-
-	token++;
-	client->product_id = strtoul(token, &end, 16);
-	if (token == end) {
-		fprintf(stderr, "Cannot parse product id.\n");
-		return false;
-	}
-
-	token = end;
-	if (token[0] != '/') {
-		fprintf(stderr, "Wrong input format (/ not found)\n");
-		return false;
-	}
-	token++;
-
-	int i;
-	for (i = 0; i < strlen(token); i++) {
-		if (token[i] == '_') {
-			token[i] = ' ';
-		}
-	}
-
-	client->dev_name = strdup(token);
-
-	return true;
-}
-int create_node(gamepad_client* client) {
+bool create_node(gamepad_client* client, struct device_meta* meta) {
 	//generate libevdev device
-	client->ev_device = evdev_node(client->vendor_id, client->product_id, client->dev_name);
+	client->ev_device = evdev_node(meta);
 	if(!client->ev_device){
 		fprintf(stderr, "Failed to create evdev node\n");
-		return client_close(client, true);
+		send(client->fd, "500 Cannot create evdev node\0", 29, 0);
+		return false;
 	}
 
 	//generate libevdev input handle
 	client->ev_input = evdev_input(client->ev_device);
 	if(!client->ev_input){
 		fprintf(stderr, "Failed to create input device\n");
-		return client_close(client, true);
+		send(client->fd, "500 Cannot create input device\0", 31, 0);
+		return false;
 	}
 
-	return 0;
+	return true;
 }
+bool handle_hello(gamepad_client* client) {
+	char* token = strtok((char*) client->input_buffer, "\n");
+	char* endptr;
+	// help for device creation
+	struct device_meta meta = {
+		.vendor_id = 0x0000,
+		.product_id = 0x0000,
+		.bustype = 0x0011,
+		.devtype = DEV_TYPE_UNKOWN,
+		.name = "",
+		.version = 0x0001
+	};
+
+	while(token != NULL && strlen(token) > 0) {
+
+		// hello followed by the protocol version
+		// HELLO <version>
+		if (!strncmp(token, "HELLO ", 6)) {
+			if (strcmp(token + 6, PROTOCOL_VERSION)) {
+				fprintf(stderr, "Disconnecting client with invalid protocol version %s\n", token);
+				send(client->fd, "400 Protocol version mismatch\0", 30, 0);
+				return false;
+			}
+		// vendor id of the device
+		// VENDOR 0xXXXX
+		} else if (!strncmp(token, "VENDOR ", 7)) {
+			meta.vendor_id = strtol(token + 7, &endptr, 16);
+			if (token + 7 == endptr) {
+				fprintf(stderr, "vendor_id was not a valid number (%s).\n", token + 7);
+				return false;
+			}
+		// product id of the device
+		// PRODUCT 0xXXXX
+		} else if (!strncmp(token, "PRODUCT ", 8)) {
+			meta.product_id = strtol(token + 8, &endptr, 16);
+			if (token + 7 == endptr) {
+				fprintf(stderr, "product_id was not a valid number (%s).\n", token + 8);
+				return false;
+			}
+		// bus type of the device
+		// BUSTYPE 0xXXXX
+		} else if (!strncmp(token, "BUSTYPE ", 8)) {
+			meta.bustype = strtol(token + 8, &endptr, 16);
+			if (token + 7 == endptr) {
+				fprintf(stderr, "bustype was not a valid number (%s).\n", token + 8);
+				return false;
+			}
+		// version of the device
+		// VERSION 0xXXXX
+		} else if (!strncmp(token, "VERSION ", 8)) {
+			meta.version = strtol(token + 8, &endptr, 16);
+			if (token + 7 == endptr) {
+				fprintf(stderr, "version was not a valid number (%s).\n", token + 8);
+				return false;
+			}
+
+		// devtype of the device
+		// for mapping see DEV_TYPE
+		// DEVTYPE <number>
+		} else if (!strncmp(token, "DEVTYPE ", 8)) {
+			meta.devtype = strtol(token + 8, &endptr, 10);
+			if (token + 7 == endptr) {
+				fprintf(stderr, "devtype was not a valid number (%s).\n", token + 8);
+				return false;
+			}
+		// name of the device
+		// NAME <name>
+		} else if (!strncmp(token, "NAME ", 5)) {
+			meta.name = token + 5;
+		// password for this server
+		// PASSWORD <password>
+		} else if (!strncmp(token, "PASSWORD ", 9)) {
+			if (strcmp(token + 9, global_password)) {
+				fprintf(stderr, "Disconnecting client with invalid access token\n");
+				send(client->fd, "401 Incorrect password or token\0", 32, 0);
+				return false;
+			}
+		} else {
+			fprintf(stderr, "Unkown command: %s\n", token);
+			send(client->fd, "400 Unkown command\0", 19, 0);
+			return false;
+		}
+
+		token = strtok(NULL, "\n");
+	}
+
+	return create_node(client, &meta);
+}
+
 int client_data(gamepad_client* client){
 	ssize_t bytes;
 	size_t u;
 	struct input_event* event = (struct input_event*) client->input_buffer;
-	char* token = NULL;
-	char* device_part;
 
 	bytes = recv(client->fd, client->input_buffer + client->scan_offset, sizeof(client->input_buffer) - client->scan_offset, 0);
 
@@ -164,52 +211,37 @@ int client_data(gamepad_client* client){
 			for(u = 0; u < client->scan_offset && client->input_buffer[u]; u++){
 			}
 			if(u < client->scan_offset){
-				if(!strncmp((char*) client->input_buffer, "HELLO ", 6)
-						|| !strncmp((char*) client->input_buffer, "CONTINUE ", 9)){
-					//parameters version password/token
-					token = strtok((char*) client->input_buffer, " ");
-					token = strtok(NULL, " ");
-					if(!token || strcmp(token, PROTOCOL_VERSION)){
-						fprintf(stderr, "Disconnecting client with invalid protocol version %s\n", token);
-						send(client->fd, "400 Protocol version mismatch\0", 30, 0);
+				if(!strncmp((char*) client->input_buffer, "HELLO ", 6)) {
+					if (!handle_hello(client)) {
 						return client_close(client, true);
 					}
-					device_part = strtok(NULL, " ");
-					if (!device_part) {
-						fprintf(stderr, "Missing protocol part.\n");
-						send(client->fd, "500 Missing protocol part\0", 26, 0);
-						return client_close(client, true);
+				} else if (!strncmp((char*) client->input_buffer, "CONTINUE ", 9)) {
+					if(strcmp((char*) client->input_buffer + 9, client->token)){
+						fprintf(stderr, "Disconnecting client with invalid access token\n");
+						send(client->fd, "401 Incorrect password or token\0", 32, 0);
+						return client_close(NULL, true);
 					}
-					token = strtok(NULL, " ");
-					if (!read_device_data(device_part, client)) {
-						send(client->fd, "500 Wrong device part\0", 22, 0);
-						return client_close(client, true);
-					}
-					if(token && ((client->input_buffer[0] == 'H' && !strcmp(token, global_password)) ||
-								(client->input_buffer[0] == 'C' && !strcmp(token, client->token)))){
-						//update offset
-						client->scan_offset -= (u + 1);
-						//copy back
-						memmove(client->input_buffer, client->input_buffer + u + 1, client->scan_offset);
-						//enable passthru
-						client->passthru = true;
-						//notify client
-						send(client->fd, "200 ", 4, 0);
-						send(client->fd, client->token, strlen(client->token) + 1, 0);
-						fprintf(stderr, "Client passthrough enabled with %zu bytes of data left\n", client->scan_offset);
-						return create_node(client);
-					}
-					else{
+				} else {
 						fprintf(stderr, "Disconnecting client with invalid access token\n");
 						send(client->fd, "401 Incorrect password or token\0", 32, 0);
 						return client_close(client, false);
-					}
 				}
-				else{
-					fprintf(stderr, "Disconnecting non-conforming client\n");
-					send(client->fd, "500 Unknown greeting\0", 21, 0);
-					return client_close(client, true);
-				}
+				//update offset
+				client->scan_offset -= (u + 1);
+				//copy back
+				memmove(client->input_buffer, client->input_buffer + u + 1, client->scan_offset);
+				//enable passthru
+				client->passthru = true;
+				//notify client
+				send(client->fd, "200 ", 4, 0);
+				send(client->fd, client->token, strlen(client->token) + 1, 0);
+				fprintf(stderr, "Client passthrough enabled with %zu bytes of data left\n", client->scan_offset);
+				return true;
+
+			} else {
+				fprintf(stderr, "Disconnecting non-conforming client\n");
+				send(client->fd, "500 Unknown greeting\0", 21, 0);
+				return client_close(client, true);
 			}
 		}
 	}
@@ -219,7 +251,7 @@ int client_data(gamepad_client* client){
 		while(client->scan_offset >= sizeof(struct input_event)){
 			//send message
 			libevdev_uinput_write_event(client->ev_input, event->type, event->code, event->value);
-			//fprintf(stderr, "Writing event: client:%zu, type:%d, code:%d, value:%d\n", client - clients, event->type, event->code, event->value);
+			fprintf(stderr, "Writing event: client:%zu, type:%d, code:%d, value:%d\n", client - clients, event->type, event->code, event->value);
 			//update offset
 			client->scan_offset -= sizeof(struct input_event);
 			//copy back

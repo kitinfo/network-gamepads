@@ -2,7 +2,7 @@ Basic parameters
 	The length of a token or password MUST NOT exceed 64 bytes
 	The length of a single message MUST NOT exceed 512 bytes
 	Every message MUST BE terminated by a zero byte
-	The protocol version described in this document is "1.1"
+	The protocol version described in this document is "2.0"
 	Server responses will always be preceded by a 3-byte status code
 
 == Initial connection ==
@@ -10,14 +10,27 @@ Basic parameters
 After establishing the initial TCP connection to the server, the client
 initiates a HELLO request of the form
 
-	HELLO <version> <vendor_id>/<product_id>/<short_name> <password>
+	HELLO <protocol_version>\n
+	VENDOR <vendor_id>\n
+	PRODUCT <product_id>\n
+	VERSION <device_version>\n
+	BUSTYPE <bustype>\n
+	DEVTYPE <devtype>\n
+	NAME <short_name>\n
+	PASSWORD <password>\n\n
 
-with <version> representing the protocol version implemented by the client,
+with <protocol_version> representing the protocol version implemented by the client,
 <vendor_id> representing the vendor_id of the device,
 <product_id> representing the product_id of the device,
-<short_name> representing a short_name of the product
+<device_version> representing the version of the device,
+<bustype> representing the bustype of the device,
+<devtype> representing the device type (see device types),
+<short_name> representing a short_name of the device
 (not more then 100 characters)
 and <password> representing a pre-configured shared password to the server.
+
+An example is in example.txt
+A missing device type line will result in the unkown device type.
 
 Upon successful authentication, the server replies with
 
@@ -49,7 +62,7 @@ connection and transmits
 with <version> being the client protocol version and <token> the reconnection
 token.
 
-Upon successful reconnection, the server answers with 
+Upon successful reconnection, the server answers with
 
 	200 <token>
 
@@ -61,3 +74,10 @@ in the previous section, as well as
 
 	406 No Token supplied
 	403 Token expired
+
+== Device types ==
+0: UNKOWN - Unkown device type
+1: MICE - a mice
+2: GAMEPAD - a gamepad device
+3: KEYBOARD - a keyboard
+
