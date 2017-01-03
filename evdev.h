@@ -46,8 +46,21 @@ struct libevdev* evdev_node(struct device_meta* meta){
 	libevdev_enable_event_code(dev, EV_KEY, BTN_Y, NULL);
 	libevdev_enable_event_code(dev, EV_KEY, BTN_TL, NULL);
 	libevdev_enable_event_code(dev, EV_KEY, BTN_TR, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_TRIGGER, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_TOP, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_TOP2, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_BASE, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_BASE2, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_BASE3, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_BASE4, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_BASE5, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_BASE6, NULL);
 	libevdev_enable_event_code(dev, EV_KEY, BTN_SELECT, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_MODE, NULL);
 	libevdev_enable_event_code(dev, EV_KEY, BTN_START, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_PINKIE, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_THUMB, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_THUMB2, NULL);
 	libevdev_enable_event_code(dev, EV_KEY, BTN_THUMBL, NULL);
 	libevdev_enable_event_code(dev, EV_KEY, BTN_THUMBR, NULL);
 	for (i = 0; i < 128; i++) {
