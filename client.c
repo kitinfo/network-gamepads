@@ -9,8 +9,14 @@
 #include <errno.h>
 #include <libevdev/libevdev.h>
 
+#include "libs/logger.h"
+#include "libs/logger.c"
+#include "libs/easy_args.h"
+#include "libs/easy_args.c"
+
 #include "network.h"
 #include "protocol.h"
+#include "client.h"
 
 const unsigned MSG_MAX = 256;
 const unsigned TOKEN_LEN = 64;
@@ -44,7 +50,7 @@ int continue_connect(int sock_fd, char* token) {
 	return 1;
 }
 
-char* init_connect(int sock_fd, struct libevdev* evdev, char* password) {
+char* init_connect(int sock_fd, struct libevdev* evdev, Config* config) {
 	ssize_t bytes;
 	char msg[MSG_MAX + 1];
 
@@ -53,13 +59,12 @@ char* init_connect(int sock_fd, struct libevdev* evdev, char* password) {
 	int bustype = libevdev_get_id_bustype(evdev);
 	int version = libevdev_get_id_version(evdev);
 	char* dev_name = strdup(libevdev_get_name(evdev));
-	unsigned int devtype = 0;
 
 	if (strlen(dev_name) > 100) {
 		dev_name[100] = 0;
 	}
 
-	bytes = snprintf(msg, MSG_MAX, "HELLO %s\nVENDOR 0x%.4x\nPRODUCT 0x%.4x\nBUSTYPE 0x%.4x\nDEVTYPE %d\nVERSION 0x%.4x\nNAME %s\nPASSWORD %s\n\n", PROTOCOL_VERSION, vendor_id, product_id, bustype, devtype, version, dev_name, password);
+	bytes = snprintf(msg, MSG_MAX, "HELLO %s\nVENDOR 0x%.4x\nPRODUCT 0x%.4x\nBUSTYPE 0x%.4x\nDEVTYPE %d\nVERSION 0x%.4x\nNAME %s\nPASSWORD %s\n\n", PROTOCOL_VERSION, vendor_id, product_id, bustype, config->type, version, dev_name, config->password);
 	free(dev_name);
 	fprintf(stderr, "Generated message: %s", msg);
 	if(bytes >= MSG_MAX) {
@@ -97,23 +102,54 @@ char* init_connect(int sock_fd, struct libevdev* evdev, char* password) {
 	return token;
 }
 
+int setType(int argc, char** argv, Config* config) {
+	if (!strcmp(argv[1], "mice")) {
+		config->type = 1;
+	} else if (!strcmp(argv[1], "gamepad")) {
+		config->type = 2;
+	} else if (!strcmp(argv[1], "keyboard")) {
+		config->type = 3;
+	} else {
+		return -1;
+	}
+
+	return 0;
+}
+
+void add_arguments() {
+	eargs_addArgument("-t", "--type", setType, 1);
+}
+
 int main(int argc, char** argv){
-	char* host = getenv("SERVER_HOST") ? getenv("SERVER_HOST"):DEFAULT_HOST;
-	char* port = getenv("SERVER_PORT") ? getenv("SERVER_PORT"):DEFAULT_PORT;
-	char* password = getenv("SERVER_PW") ? getenv("SERVER_PW"):DEFAULT_PASSWORD;
+
+	Config config = {
+		.log = {
+			.stream = stderr,
+			.verbosity = 5
+		},
+		.program_name = argv[0],
+		.host = getenv("SERVER_HOST") ? getenv("SERVER_HOST"):DEFAULT_HOST,
+		.password = getenv("SERVER_PW") ? getenv("SERVER_PW"):DEFAULT_PASSWORD,
+		.port = getenv("SERVER_PORT") ? getenv("SERVER_PORT"):DEFAULT_PORT,
+		.type = 0
+	};
 
 	int event_fd, sock_fd;
 	ssize_t bytes;
 	struct input_event ev;
 	struct libevdev* evdev;
 
-	if(argc < 2){
+	add_arguments();
+	char* output[argc];
+	int outputc = eargs_parse(argc, argv, output, &config);
+
+	if(outputc < 1){
 		printf("Insufficient arguments\n");
 		return EXIT_FAILURE;
 	}
 
-	printf("Reading input events from %s\n", argv[1]);
-	event_fd = open(argv[1], O_RDONLY);
+	printf("Reading input events from %s\n", output[0]);
+	event_fd = open(output[0], O_RDONLY);
 	if(event_fd < 0){
 		printf("Failed to open device\n");
 		return EXIT_FAILURE;
@@ -124,17 +160,17 @@ int main(int argc, char** argv){
 		return 2;
 	}
 
-	sock_fd = tcp_connect(host, port);
+	sock_fd = tcp_connect(config.host, config.port);
 	if(sock_fd < 0) {
-		printf("Failed to reach server at %s port %s\n", host, port);
+		printf("Failed to reach server at %s port %s\n", config.host, config.port);
 		return 2;
 	}
 
-	char* token = init_connect(sock_fd, evdev, password);
+	char* token = init_connect(sock_fd, evdev, &config);
 	if (token == NULL) {
 		return 3;
 	}
-
+	printf("token %s\n", token);
 	//get exclusive control
  	bytes = ioctl(event_fd, EVIOCGRAB, 1);
 
@@ -156,7 +192,7 @@ int main(int argc, char** argv){
 					int status = continue_connect(sock_fd, token);
 					if (status == 0) { // reconnect is failed, trying init_connect
 						free(token);
-						token = init_connect(sock_fd, evdev, password);
+						token = init_connect(sock_fd, evdev, &config);
 						if (token == NULL) { // cannot reconnect to server
 							printf("Cannot reconnect to server.\n");
 							break;

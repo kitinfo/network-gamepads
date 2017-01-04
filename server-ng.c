@@ -8,10 +8,13 @@
 #define SERVER_VERSION "GamepadServer 1.1"
 #define MAX_CLIENTS 8
 
+#include "libs/logger.h"
+#include "libs/logger.c"
 #include "network.h"
 #include "protocol.h"
-#include "evdev.h"
 #include "structures.h"
+#include "uinput.h"
+#include "uinput.c"
 
 volatile sig_atomic_t shutdown_server = 0;
 char* global_password = NULL;
@@ -21,19 +24,10 @@ void signal_handler(int param) {
 	shutdown_server = 1;
 }
 
-int client_close(gamepad_client* client, bool cleanup){
+int client_close(LOGGER log, gamepad_client* client, bool cleanup){
 	if(cleanup){
-		if(client->ev_input){
-			libevdev_uinput_destroy(client->ev_input);
-			client->ev_input = NULL;
-		}
-
-		if(client->ev_device){
-			libevdev_free(client->ev_device);
-			client->ev_device = NULL;
-		}
+		cleanup_device(log, client);
 		client->token[0] = 0;
-		free(client->dev_name);
 	}
 	else{
 		fprintf(stderr, "Closing client connection\n");
@@ -48,7 +42,7 @@ int client_close(gamepad_client* client, bool cleanup){
 	return 0;
 }
 
-int client_connection(int listener){
+int client_connection(LOGGER log, int listener){
 	size_t client_ident;
 	unsigned u;
 	for(client_ident = 0; client_ident < MAX_CLIENTS && clients[client_ident].fd >= 0; client_ident++){
@@ -56,11 +50,11 @@ int client_connection(int listener){
 
 	if(client_ident == MAX_CLIENTS){
 		//TODO no client slot left, turn away
-		fprintf(stderr, "Client slots exhausted, turning connection away\n");
+		logprintf(log, LOG_ERROR, "Client slots exhausted, turning connection away\n");
 		return 0;
 	}
 
-	fprintf(stderr, "New client in slot %zu\n", client_ident);
+	logprintf(log, LOG_INFO, "New client in slot %zu\n", client_ident);
 	clients[client_ident].fd = accept(listener, NULL, NULL);
 
 	//regenerate reconnection token
@@ -72,36 +66,30 @@ int client_connection(int listener){
 	return 0;
 }
 
-bool create_node(gamepad_client* client, struct device_meta* meta) {
+bool create_node(LOGGER log, gamepad_client* client, struct device_meta* meta) {
 	//generate libevdev device
-	client->ev_device = evdev_node(meta);
-	if(!client->ev_device){
+	if(!create_device(log, client, meta)) {
 		fprintf(stderr, "Failed to create evdev node\n");
 		send(client->fd, "500 Cannot create evdev node\0", 29, 0);
 		return false;
 	}
 
-	//generate libevdev input handle
-	client->ev_input = evdev_input(client->ev_device);
-	if(!client->ev_input){
-		fprintf(stderr, "Failed to create input device\n");
-		send(client->fd, "500 Cannot create input device\0", 31, 0);
-		return false;
-	}
-
 	return true;
 }
-bool handle_hello(gamepad_client* client) {
+bool handle_hello(LOGGER log, gamepad_client* client) {
 	char* token = strtok((char*) client->input_buffer, "\n");
 	char* endptr;
 	// help for device creation
+	struct input_id id = {
+		.vendor = 0x0000,
+		.product = 0x0000,
+		.version = 0x0001,
+		.bustype = 0x0011
+	};
 	struct device_meta meta = {
-		.vendor_id = 0x0000,
-		.product_id = 0x0000,
-		.bustype = 0x0011,
+		.id = id,
 		.devtype = DEV_TYPE_UNKOWN,
-		.name = "",
-		.version = 0x0001
+		.name = ""
 	};
 
 	while(token != NULL && strlen(token) > 0) {
@@ -117,7 +105,7 @@ bool handle_hello(gamepad_client* client) {
 		// vendor id of the device
 		// VENDOR 0xXXXX
 		} else if (!strncmp(token, "VENDOR ", 7)) {
-			meta.vendor_id = strtol(token + 7, &endptr, 16);
+			meta.id.vendor = strtol(token + 7, &endptr, 16);
 			if (token + 7 == endptr) {
 				fprintf(stderr, "vendor_id was not a valid number (%s).\n", token + 7);
 				return false;
@@ -125,7 +113,7 @@ bool handle_hello(gamepad_client* client) {
 		// product id of the device
 		// PRODUCT 0xXXXX
 		} else if (!strncmp(token, "PRODUCT ", 8)) {
-			meta.product_id = strtol(token + 8, &endptr, 16);
+			meta.id.product = strtol(token + 8, &endptr, 16);
 			if (token + 7 == endptr) {
 				fprintf(stderr, "product_id was not a valid number (%s).\n", token + 8);
 				return false;
@@ -133,7 +121,7 @@ bool handle_hello(gamepad_client* client) {
 		// bus type of the device
 		// BUSTYPE 0xXXXX
 		} else if (!strncmp(token, "BUSTYPE ", 8)) {
-			meta.bustype = strtol(token + 8, &endptr, 16);
+			meta.id.bustype = strtol(token + 8, &endptr, 16);
 			if (token + 7 == endptr) {
 				fprintf(stderr, "bustype was not a valid number (%s).\n", token + 8);
 				return false;
@@ -141,7 +129,7 @@ bool handle_hello(gamepad_client* client) {
 		// version of the device
 		// VERSION 0xXXXX
 		} else if (!strncmp(token, "VERSION ", 8)) {
-			meta.version = strtol(token + 8, &endptr, 16);
+			meta.id.version = strtol(token + 8, &endptr, 16);
 			if (token + 7 == endptr) {
 				fprintf(stderr, "version was not a valid number (%s).\n", token + 8);
 				return false;
@@ -177,10 +165,10 @@ bool handle_hello(gamepad_client* client) {
 		token = strtok(NULL, "\n");
 	}
 
-	return create_node(client, &meta);
+	return create_node(log, client, &meta);
 }
 
-int client_data(gamepad_client* client){
+int client_data(LOGGER log, gamepad_client* client){
 	ssize_t bytes;
 	size_t u;
 	struct input_event* event = (struct input_event*) client->input_buffer;
@@ -190,18 +178,18 @@ int client_data(gamepad_client* client){
 	//check if closed
 	if(bytes < 0){
 		perror("recv");
-		return client_close(client, false);
+		return client_close(log, client, false);
 	}
 	else if(bytes == 0){
-		return client_close(client, false);
+		return client_close(log, client, false);
 	}
 
 	client->scan_offset += bytes;
 
 	//check for overfull buffer
 	if(sizeof(client->input_buffer) - client->scan_offset < 10){
-		fprintf(stderr, "Disconnecting spammy client\n");
-		return client_close(client, false);
+		logprintf(log, LOG_WARNING, "Disconnecting spammy client\n");
+		return client_close(log, client, false);
 	}
 
 	if(!client->passthru){
@@ -212,19 +200,19 @@ int client_data(gamepad_client* client){
 			}
 			if(u < client->scan_offset){
 				if(!strncmp((char*) client->input_buffer, "HELLO ", 6)) {
-					if (!handle_hello(client)) {
-						return client_close(client, true);
+					if (!handle_hello(log, client)) {
+						return client_close(log, client, true);
 					}
 				} else if (!strncmp((char*) client->input_buffer, "CONTINUE ", 9)) {
 					if(strcmp((char*) client->input_buffer + 9, client->token)){
 						fprintf(stderr, "Disconnecting client with invalid access token\n");
 						send(client->fd, "401 Incorrect password or token\0", 32, 0);
-						return client_close(NULL, true);
+						return client_close(log, NULL, true);
 					}
 				} else {
 						fprintf(stderr, "Disconnecting client with invalid access token\n");
 						send(client->fd, "401 Incorrect password or token\0", 32, 0);
-						return client_close(client, false);
+						return client_close(log, client, false);
 				}
 				//update offset
 				client->scan_offset -= (u + 1);
@@ -235,13 +223,13 @@ int client_data(gamepad_client* client){
 				//notify client
 				send(client->fd, "200 ", 4, 0);
 				send(client->fd, client->token, strlen(client->token) + 1, 0);
-				fprintf(stderr, "Client passthrough enabled with %zu bytes of data left\n", client->scan_offset);
+				logprintf(log, LOG_INFO, "Client passthrough enabled with %zu bytes of data left\n", client->scan_offset);
 				return true;
 
 			} else {
-				fprintf(stderr, "Disconnecting non-conforming client\n");
+				logprintf(log, LOG_ERROR, "Disconnecting non-conforming client\n");
 				send(client->fd, "500 Unknown greeting\0", 21, 0);
-				return client_close(client, true);
+				return client_close(log, client, true);
 			}
 		}
 	}
@@ -250,8 +238,8 @@ int client_data(gamepad_client* client){
 		//if complete message, push to node
 		while(client->scan_offset >= sizeof(struct input_event)){
 			//send message
-			libevdev_uinput_write_event(client->ev_input, event->type, event->code, event->value);
-			fprintf(stderr, "Writing event: client:%zu, type:%d, code:%d, value:%d\n", client - clients, event->type, event->code, event->value);
+			write(client->ev_fd, event, sizeof(struct input_event));
+			logprintf(log, LOG_DEBUG, "Writing event: client:%zu, type:%d, code:%d, value:%d\n", client - clients, event->type, event->code, event->value);
 			//update offset
 			client->scan_offset -= sizeof(struct input_event);
 			//copy back
@@ -277,6 +265,11 @@ int main(int argc, char** argv) {
 		fprintf(stderr, "Failed to open listener\n");
 		return EXIT_FAILURE;
 	}
+
+	LOGGER log = {
+		.stream = stderr,
+		.verbosity = 5
+	};
 
 	//set up signal handling
 	signal(SIGINT, signal_handler);
@@ -309,19 +302,19 @@ int main(int argc, char** argv) {
 		else{
 			if(FD_ISSET(listen_fd, &readfds)){
 				//handle client connection
-				client_connection(listen_fd);
+				client_connection(log, listen_fd);
 			}
 			for(u = 0; u < MAX_CLIENTS; u++){
 				if(FD_ISSET(clients[u].fd, &readfds)){
 					//handle client data
-					client_data(clients + u);
+					client_data(log, clients + u);
 				}
 			}
 		}
 	}
 
 	for(u = 0; u < MAX_CLIENTS; u++){
-		client_close(clients + u, true);
+		client_close(log, clients + u, true);
 	}
 	close(listen_fd);
 	return EXIT_SUCCESS;
