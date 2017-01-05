@@ -64,12 +64,20 @@ The directory `/dev/input/by-id/` has symlinks that are named in a pretty readab
 To test whether a device node is the one you want, run `cat /dev/input/path/to/node` and press some keys.
 Each keypress should print some seemingly random data.
 
-Having found your device node, run `input-client /dev/input/path/to/input/node`, while specifying the following
+Having found your device node, run `input-client [-t <type>] /dev/input/path/to/input/node`, while specifying the following
 parameters via environment variables:
 
 * `SERVER_HOST`: The host to connect to (Default: `::`)
 * `SERVER_PORT`: The port to connect to (Default `9292`)
 * `SERVER_PW`: The password required for the server (Default `foobar`)
+
+Type can be one of the following:
+
+* `mouse`: a mouse device
+* `keyboard`: a keyboard device
+* `gamepad`: a gamepad device
+
+If the type is not specified the default type is used. Not defining a device type is not recommended.
 
 While the client is running (and after it has successfully connected), input events generated should take effect
 on the computer running the server.
