@@ -42,7 +42,7 @@ const input_device_bits MICE_KEYBITS = {
 };
 	/* GAMEPAD */
 const input_device_bits GAMEPAD_KEYBITS = {
-	.len = 24,
+	.len = 34,
 	.bits = {
 		{ UI_SET_EVBIT, EV_SYN },
 		{ UI_SET_EVBIT, EV_KEY },
@@ -60,6 +60,16 @@ const input_device_bits GAMEPAD_KEYBITS = {
 		{ UI_SET_KEYBIT, BTN_MODE },
 		{ UI_SET_KEYBIT, BTN_THUMBL },
 		{ UI_SET_KEYBIT, BTN_THUMBR },
+		{ UI_SET_KEYBIT, BTN_TRIGGER },
+		{ UI_SET_KEYBIT, BTN_THUMB },
+		{ UI_SET_KEYBIT, BTN_THUMB2 },
+		{ UI_SET_KEYBIT, BTN_TOP },
+		{ UI_SET_KEYBIT, BTN_TOP2 },
+		{ UI_SET_KEYBIT, BTN_PINKIE },
+		{ UI_SET_KEYBIT, BTN_BASE },
+		{ UI_SET_KEYBIT, BTN_BASE2 },
+		{ UI_SET_KEYBIT, BTN_BASE3 },
+		{ UI_SET_KEYBIT, BTN_BASE4 },
 		{ UI_SET_ABSBIT, ABS_X },
 		{ UI_SET_ABSBIT, ABS_Y },
 		{ UI_SET_ABSBIT, ABS_Z },
