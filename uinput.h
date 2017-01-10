@@ -42,7 +42,7 @@ const input_device_bits MICE_KEYBITS = {
 };
 	/* GAMEPAD */
 const input_device_bits GAMEPAD_KEYBITS = {
-	.len = 23,
+	.len = 24,
 	.bits = {
 		{ UI_SET_EVBIT, EV_SYN },
 		{ UI_SET_EVBIT, EV_KEY },
