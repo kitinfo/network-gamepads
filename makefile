@@ -2,7 +2,7 @@
 PREFIX ?= $(DESTDIR)/usr/bin
 CFLAGS ?= -Wall -g
 
-all: server-ng client
+all: server-ng client osc-xlater
 
 install-server: server-ng
 	mv server-ng input-server

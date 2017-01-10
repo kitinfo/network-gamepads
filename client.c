@@ -18,7 +18,6 @@
 #include "protocol.h"
 #include "client.h"
 
-const unsigned MSG_MAX = 256;
 const unsigned TOKEN_LEN = 64;
 
 int continue_connect(int sock_fd, char* token) {
@@ -52,6 +51,7 @@ int continue_connect(int sock_fd, char* token) {
 
 char* init_connect(int sock_fd, int device_fd, Config* config) {
 	ssize_t bytes;
+	//FIXME this only allocates enough storage for one message
 	char msg[MSG_MAX + 1];
 
 	struct input_id id = {0};
@@ -77,6 +77,7 @@ char* init_connect(int sock_fd, int device_fd, Config* config) {
 	send(sock_fd, msg, bytes + 1, 0);
 
 	memset(msg, 0, sizeof(msg));
+	//FIXME this might not be in one message
 	bytes = recv(sock_fd, msg, MSG_MAX, 0);
 
 	if (bytes < 0) {

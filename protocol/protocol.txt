@@ -17,7 +17,7 @@ initiates a HELLO request of the form
 	BUSTYPE <bustype>\n
 	DEVTYPE <devtype>\n
 	NAME <short_name>\n
-	PASSWORD <password>\n\n
+	PASSWORD <password>\n\n\0
 
 with <protocol_version> representing the protocol version implemented by the client,
 <vendor_id> representing the vendor_id of the device,
@@ -34,7 +34,7 @@ A missing device type line will result in the unkown device type.
 
 Upon successful authentication, the server replies with
 
-	200 <token>
+	200 <token>\0
 
 with <token> being a reconnection passphrase to be used when re-establishing
 a lost connection. The token will guarantee that a client is always assigned the
