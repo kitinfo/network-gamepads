@@ -63,6 +63,10 @@ struct libevdev* evdev_node(struct device_meta* meta){
 	libevdev_enable_event_code(dev, EV_KEY, BTN_THUMB2, NULL);
 	libevdev_enable_event_code(dev, EV_KEY, BTN_THUMBL, NULL);
 	libevdev_enable_event_code(dev, EV_KEY, BTN_THUMBR, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_DPAD_UP, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_DPAD_DOWN, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_DPAD_LEFT, NULL);
+	libevdev_enable_event_code(dev, EV_KEY, BTN_DPAD_RIGHT, NULL);
 	for (i = 0; i < 128; i++) {
 		libevdev_enable_event_code(dev, EV_KEY, i, NULL);
 	}
