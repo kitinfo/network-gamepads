@@ -83,6 +83,10 @@ bool set_abs_value_for(char* token, int code, struct device_meta* meta) {
 		meta->absmin[code] = strtoul(token + 4, NULL, 10);
 	} else if (!strncmp(token, "MAX", 3) && len > 4) {
 		meta->absmax[code] = strtoul(token + 4, NULL, 10);
+	} else if (!strncmp(token, "FLAT", 4) && len > 5) {
+		meta->absflat[code] = strtoul(token + 5, NULL, 10);
+	} else if (!strncmp(token, "FUZZ", 4) && len > 5) {
+		meta->absfuzz[code] = strtoul(token + 5, NULL, 10);
 	} else {
 		return false;
 	}
@@ -138,7 +142,9 @@ bool handle_hello(LOGGER log, gamepad_client* client) {
 		.devtype = DEV_TYPE_UNKOWN,
 		.name = "",
 		.absmax = {0},
-		.absmin = {0}
+		.absmin = {0},
+		.absflat = {0},
+		.absfuzz = {0}
 	};
 
 	while(token != NULL && strlen(token) > 0) {

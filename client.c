@@ -83,7 +83,7 @@ char* init_connect(int sock_fd, int device_fd, Config* config) {
 	get_abs_info(config, device_fd, ABS_X, &x_info);
 	get_abs_info(config, device_fd, ABS_Y, &y_info);
 
-	bytes = snprintf(msg, MSG_MAX, "HELLO %s\nABS_X_MIN %d\nABS_X_MAX %d\nABS_Y_MIN %d\nABS_Y_MAX %d\nVENDOR 0x%.4x\nPRODUCT 0x%.4x\nBUSTYPE 0x%.4x\nDEVTYPE %d\nVERSION 0x%.4x\nNAME %s\nPASSWORD %s\n\n", PROTOCOL_VERSION, x_info.minimum, x_info.maximum, y_info.minimum, y_info.maximum, id.vendor, id.product, id.bustype, config->type, id.version, dev_name, config->password);
+	bytes = snprintf(msg, MSG_MAX, "HELLO %s\nABS_X_MIN %d\nABS_X_MAX %d\nABS_X_FLAT %d\nABS_Y_FLAT %d\nABS_Y_MIN %d\nABS_Y_MAX %d\nVENDOR 0x%.4x\nPRODUCT 0x%.4x\nBUSTYPE 0x%.4x\nDEVTYPE %d\nVERSION 0x%.4x\nNAME %s\nPASSWORD %s\n\n", PROTOCOL_VERSION, x_info.minimum, x_info.maximum, x_info.flat, y_info.flat, y_info.minimum, y_info.maximum, id.vendor, id.product, id.bustype, config->type, id.version, dev_name, config->password);
 
 	logprintf(config->log, LOG_DEBUG, "Generated message: %s", msg);
 	if(bytes >= MSG_MAX) {
