@@ -236,4 +236,5 @@ const input_device_bits* DEVICE_TYPES[] = {
 	&KEYBOARD_KEYBITS
 };
 bool cleanup_device(LOGGER log, gamepad_client* client);
+void init_abs_info(struct device_meta* meta);
 bool create_device(LOGGER log, gamepad_client* client, struct device_meta* meta);

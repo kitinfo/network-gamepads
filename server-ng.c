@@ -76,6 +76,53 @@ bool create_node(LOGGER log, gamepad_client* client, struct device_meta* meta) {
 
 	return true;
 }
+
+bool set_abs_value_for(char* token, int code, struct device_meta* meta) {
+	int len = strlen(token);
+	if (!strncmp(token, "MIN", 3) && len > 4) {
+		meta->absmin[code] = strtoul(token + 4, NULL, 10);
+	} else if (!strncmp(token, "MAX", 3) && len > 4) {
+		meta->absmax[code] = strtoul(token + 4, NULL, 10);
+	} else {
+		return false;
+	}
+	return true;
+}
+
+bool set_abs_value(char* token, struct device_meta* meta) {
+	int len = strlen(token);
+	int code = -1;
+	if (!strncmp(token, "X_", 2) && len > 2) {
+		code = ABS_X;
+		token += 2;
+	} else if (!strncmp(token, "Y_", 2) && len > 2) {
+		code = ABS_Y;
+		token += 2;
+	} else if (!strncmp(token , "Z_", 2) && len > 2) {
+		code = ABS_Z;
+		token += 2;
+	} else if (!strncmp(token , "RX_", 3) && len > 3) {
+		code = ABS_RX;
+		token += 3;
+	} else if (!strncmp(token , "RY_", 3) && len > 3) {
+		code = ABS_RY;
+		token += 3;
+	} else if (!strncmp(token , "RZ_", 3) && len > 3) {
+		code = ABS_RZ;
+		token += 3;
+	} else if (!strncmp(token , "HAT0X_", 6) && len > 6) {
+		code = ABS_HAT0X;
+		token += 6;
+	} else if (!strncmp(token , "HAT0Y_", 6) && len > 6) {
+		code = ABS_HAT0Y;
+		token += 6;
+	} else {
+		return false;
+	}
+
+	return set_abs_value_for(token, code, meta);
+}
+
 bool handle_hello(LOGGER log, gamepad_client* client) {
 	char* token = strtok((char*) client->input_buffer, "\n");
 	char* endptr;
@@ -89,7 +136,9 @@ bool handle_hello(LOGGER log, gamepad_client* client) {
 	struct device_meta meta = {
 		.id = id,
 		.devtype = DEV_TYPE_UNKOWN,
-		.name = ""
+		.name = "",
+		.absmax = {0},
+		.absmin = {0}
 	};
 
 	while(token != NULL && strlen(token) > 0) {
@@ -100,6 +149,11 @@ bool handle_hello(LOGGER log, gamepad_client* client) {
 			if (strcmp(token + 6, PROTOCOL_VERSION)) {
 				fprintf(stderr, "Disconnecting client with invalid protocol version %s\n", token);
 				send(client->fd, "400 Protocol version mismatch\0", 30, 0);
+				return false;
+			}
+		} else if (!strncmp(token, "ABS_", 4) && strlen(token) > 4) {
+			if (!set_abs_value(token + 4, &meta)) {
+				fprintf(stderr, "Cannot parse ABS_: %s\n", token);
 				return false;
 			}
 		// vendor id of the device

@@ -49,6 +49,16 @@ int continue_connect(int sock_fd, char* token) {
 	return 1;
 }
 
+
+bool get_abs_info(Config* config, int device_fd, int abs, struct input_absinfo* info) {
+	if (ioctl(device_fd, EVIOCGABS(abs), info)) {
+		logprintf(config->log, LOG_INFO, "ABS not found.\n");
+		return false;
+	}
+
+	return true;
+}
+
 char* init_connect(int sock_fd, int device_fd, Config* config) {
 	ssize_t bytes;
 	//FIXME this only allocates enough storage for one message
@@ -67,7 +77,14 @@ char* init_connect(int sock_fd, int device_fd, Config* config) {
 		return NULL;
 	}
 
-	bytes = snprintf(msg, MSG_MAX, "HELLO %s\nVENDOR 0x%.4x\nPRODUCT 0x%.4x\nBUSTYPE 0x%.4x\nDEVTYPE %d\nVERSION 0x%.4x\nNAME %s\nPASSWORD %s\n\n", PROTOCOL_VERSION, id.vendor, id.product, id.bustype, config->type, id.version, dev_name, config->password);
+	struct input_absinfo x_info = {0};
+	struct input_absinfo y_info = {0};
+
+	get_abs_info(config, device_fd, ABS_X, &x_info);
+	get_abs_info(config, device_fd, ABS_Y, &y_info);
+
+	bytes = snprintf(msg, MSG_MAX, "HELLO %s\nABS_X_MIN %d\nABS_X_MAX %d\nABS_Y_MIN %d\nABS_Y_MAX %d\nVENDOR 0x%.4x\nPRODUCT 0x%.4x\nBUSTYPE 0x%.4x\nDEVTYPE %d\nVERSION 0x%.4x\nNAME %s\nPASSWORD %s\n\n", PROTOCOL_VERSION, x_info.minimum, x_info.maximum, y_info.minimum, y_info.maximum, id.vendor, id.product, id.bustype, config->type, id.version, dev_name, config->password);
+
 	logprintf(config->log, LOG_DEBUG, "Generated message: %s", msg);
 	if(bytes >= MSG_MAX) {
 		logprintf(config->log, LOG_ERROR, "Generated message would have been too long\n");
