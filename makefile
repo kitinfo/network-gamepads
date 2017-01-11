@@ -1,6 +1,7 @@
 .PHONY: clean run install
 PREFIX ?= $(DESTDIR)/usr/bin
 CFLAGS ?= -Wall -g
+osc-xlater: LDLIBS=-lm
 
 all: server-ng client osc-xlater
 
@@ -15,4 +16,4 @@ install-client: client
 install: install-client install-server
 
 clean:
-	$(RM) server-ng client input-server input-client
+	$(RM) server-ng client input-server input-client osc-xlater
