@@ -2,7 +2,7 @@ Basic parameters
 	The length of a token or password MUST NOT exceed 64 bytes
 	The length of a single message MUST NOT exceed 512 bytes
 	Every message MUST BE terminated by a zero byte
-	The protocol version described in this document is "2.0"
+	The protocol version described in this document is "2.1"
 	Server responses will always be preceded by a 3-byte status code
 
 == Initial connection ==
@@ -26,15 +26,22 @@ with <protocol_version> representing the protocol version implemented by the cli
 <bustype> representing the bustype of the device,
 <devtype> representing the device type (see device types),
 <short_name> representing a short_name of the device
-(not more then 100 characters)
+(not more then 80 characters (See UINPUT_MAX_NAME_SIZE in linux/uinput.h))
 and <password> representing a pre-configured shared password to the server.
+
+Optional there are these lines to setup the absolute inputs
+	ABS_<input>_MIN <int>\n
+	ABS_<input>_MAX <int>\n
+	ABS_<input>_FLAT <int>\n
+	ABS_<input>_FUZZ <int>\n
+with <input> is X, Y, Z, RX, RY, RZ, HAT0X, HAT0Y.
 
 An example is in example.txt
 A missing device type line will result in the unkown device type.
 
 Upon successful authentication, the server replies with
 
-	200 <token>\0
+	200 <token>\n
 
 with <token> being a reconnection passphrase to be used when re-establishing
 a lost connection. The token will guarantee that a client is always assigned the
@@ -64,7 +71,7 @@ token.
 
 Upon successful reconnection, the server answers with
 
-	200 <token>
+	200 <token>\n
 
 where <token> again represents a token to be used in further CONTINUE requests.
 The client is then again put in pass-through mode.
