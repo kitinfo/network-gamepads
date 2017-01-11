@@ -52,12 +52,48 @@ int continue_connect(int sock_fd, char* token) {
 
 bool get_abs_info(Config* config, int device_fd, int abs, struct input_absinfo* info) {
 	if (ioctl(device_fd, EVIOCGABS(abs), info)) {
-		logprintf(config->log, LOG_INFO, "ABS not found.\n");
+		logprintf(config->log, LOG_INFO, "ABS (%d) not found.\n", abs);
 		return false;
 	}
-
 	return true;
 }
+
+char* add_abs_info(Config* config, int device_fd) {
+
+	int keys[] = {
+		ABS_X, ABS_Y, ABS_Z, ABS_RX, ABS_RY, ABS_RZ, ABS_HAT0X, ABS_HAT0Y
+	};
+	char* key_names[] = {
+		"X", "Y", "Z", "RX", "RY", "RZ", "HAT0X", "HAT0Y"
+	};
+
+	int bytes = 0;
+	int add_bytes = 0;
+	const char* format = "ABS_%s_MIN %d\nABS_%s_MAX %d\nABS_%s_FLAT %d\nABS_%s_FUZZ %d\n";
+	char* output = strdup("");
+
+	int i;
+	struct input_absinfo info = {0};
+	for (i = 0; i < sizeof(keys) / sizeof(int); i++) {
+		memset(&info, 0, sizeof(info));
+		if (!get_abs_info(config, device_fd, keys[i], &info)) {
+			continue;
+		}
+
+		if (info.minimum != info.maximum) {
+			add_bytes = snprintf(NULL, 0, format, key_names[i], info.minimum, key_names[i], info.maximum, key_names[i], info.flat, key_names[i], info.fuzz);
+			if (add_bytes < 0) {
+				return output;
+			}
+
+			output = realloc(output, bytes + add_bytes + 1);
+			bytes += snprintf(output + bytes, add_bytes + 1, format, key_names[i], info.minimum, key_names[i], info.maximum, key_names[i], info.flat, key_names[i], info.fuzz);
+		}
+	}
+
+	return output;
+}
+
 
 char* init_connect(int sock_fd, int device_fd, Config* config) {
 	ssize_t bytes;
@@ -76,14 +112,9 @@ char* init_connect(int sock_fd, int device_fd, Config* config) {
 		logprintf(config->log, LOG_ERROR, "Cannot query device name: %s\n", strerror(errno));
 		return NULL;
 	}
+	char* absinfo = add_abs_info(config, device_fd);
 
-	struct input_absinfo x_info = {0};
-	struct input_absinfo y_info = {0};
-
-	get_abs_info(config, device_fd, ABS_X, &x_info);
-	get_abs_info(config, device_fd, ABS_Y, &y_info);
-
-	bytes = snprintf(msg, MSG_MAX, "HELLO %s\nABS_X_MIN %d\nABS_X_MAX %d\nABS_X_FLAT %d\nABS_Y_FLAT %d\nABS_Y_MIN %d\nABS_Y_MAX %d\nVENDOR 0x%.4x\nPRODUCT 0x%.4x\nBUSTYPE 0x%.4x\nDEVTYPE %d\nVERSION 0x%.4x\nNAME %s\nPASSWORD %s\n\n", PROTOCOL_VERSION, x_info.minimum, x_info.maximum, x_info.flat, y_info.flat, y_info.minimum, y_info.maximum, id.vendor, id.product, id.bustype, config->type, id.version, dev_name, config->password);
+	bytes = snprintf(msg, MSG_MAX, "HELLO %s\n%sVENDOR 0x%.4x\nPRODUCT 0x%.4x\nBUSTYPE 0x%.4x\nDEVTYPE %d\nVERSION 0x%.4x\nNAME %s\nPASSWORD %s\n\n", PROTOCOL_VERSION, absinfo ,id.vendor, id.product, id.bustype, config->type, id.version, dev_name, config->password);
 
 	logprintf(config->log, LOG_DEBUG, "Generated message: %s", msg);
 	if(bytes >= MSG_MAX) {
@@ -203,7 +234,8 @@ int main(int argc, char** argv){
 	}
 	logprintf(config.log, LOG_INFO, "token %s\n", token);
 	//get exclusive control
- 	bytes = ioctl(event_fd, EVIOCGRAB, 1);
+	int grab = 1;
+ 	bytes = ioctl(event_fd, EVIOCGRAB, &grab);
 
 	while(true){
 		//block on read
