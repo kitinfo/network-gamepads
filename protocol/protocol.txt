@@ -1,8 +1,8 @@
 Basic parameters
 	The length of a token or password MUST NOT exceed 64 bytes
-	The length of a single message MUST NOT exceed 512 bytes
+	The length of a single message MUST NOT exceed 1024 bytes
 	Every message MUST BE terminated by a zero byte
-	The protocol version described in this document is "2.1"
+	The protocol version described in this document is "2.2"
 	Server responses will always be preceded by a 3-byte status code
 
 == Initial connection ==
