@@ -295,7 +295,8 @@ int client_data(Config* config, gamepad_client* client){
 				client->passthru = true;
 				//notify client
 				send(client->fd, "200 ", 4, 0);
-				send(client->fd, client->token, strlen(client->token) + 1, 0);
+				send(client->fd, client->token, strlen(client->token), 0);
+				send(client->fd, "\n", 1, 0);
 				logprintf(config->log, LOG_INFO, "Client passthrough enabled with %zu bytes of data left\n", client->scan_offset);
 				return true;
 
