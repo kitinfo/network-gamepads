@@ -7,7 +7,8 @@ typedef enum ARG_TYPE {
 	TYPE_INT,
 	TYPE_UINT,
 	TYPE_FUNC,
-	TYPE_FLAG
+	TYPE_FLAG,
+	TYPE_STRING
 } ARG_TYPE;
 
 struct ArgumentItem {
@@ -50,6 +51,10 @@ int eargs_addArgumentElem(char* argShort, char* argLong, void* func, unsigned ar
 	return 1;
 }
 
+int eargs_addArgumentString(char* argShort, char* argLong, char** container) {
+	return eargs_addArgumentElem(argShort, argLong, (void*) container, 1, TYPE_STRING);
+}
+
 int eargs_addArgumentFlag(char* argShort, char* argLong, bool* container) {
 
 	return eargs_addArgumentElem(argShort, argLong, (void*) container, 0, TYPE_FLAG);
@@ -88,6 +93,13 @@ int eargs_clear() {
 	}
 
 	return 1;
+}
+
+bool eargs_handle_string(struct ArgumentItem* item, int argc, char** cmds, void* config) {
+	char** container = (char**) item->func;
+	*container = cmds[1];
+
+	return true;
 }
 
 bool eargs_handle_flag(struct ArgumentItem* item, int argc, char** cmds, void* config) {
@@ -133,6 +145,8 @@ bool eargs_action(struct ArgumentItem* item, int argc, char** cmds, void* config
 			return eargs_handle_func(item, argc, cmds, config);
 		case TYPE_FLAG:
 			return eargs_handle_flag(item, argc, cmds, config);
+		case TYPE_STRING:
+			return eargs_handle_string(item, argc, cmds, config);
 		default:
 			printf("type not implemented.\n");
 			return false;
@@ -173,8 +187,10 @@ int eargs_parseItem(int argc, char** cmds, void* config) {
 // output should be initialized with: argc * sizeof(char*))
 int eargs_parse(int argc, char** argv, char** output, void* config) {
 
-	// memset output array (don't trust);
-	memset(output, 0, argc * sizeof(char*));
+	if (output) {
+		// memset output array (don't trust);
+		memset(output, 0, argc * sizeof(char*));
+	}
 	int outputc = 0;
 	int i;
 
@@ -186,7 +202,9 @@ int eargs_parse(int argc, char** argv, char** output, void* config) {
 			return -2;
 		// -1 means no identifier found for this argument -> add to output list
 		} else if (v < 0) {
-			output[outputc] = argv[i];
+			if (output) {
+				output[outputc] = argv[i];
+			}
 			outputc++;
 		} else {
 			// skip arguments used by identifier.

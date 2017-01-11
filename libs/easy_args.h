@@ -62,6 +62,17 @@ int eargs_addArgumentUInt(char* argShort, char* argLong, unsigned* container);
  */
 int eargs_addArgumentFlag(char* argShort, char* argLong, bool* container);
 
+/**
+ * Adds an char* argument to the parsing list. The value will be assigned and must not be freed.
+ * @param char* argShort
+ *  Short version for the identifier (example: "-d"). NULL value means no checking.
+ * @param char* argLong
+ *  Long version of the identifier (example: "--debug"). NULL value means no checking.
+ * @param char** container
+ *  Pointer to a char pointer.
+ */
+int eargs_addArgumentString(char* argShort, char* argLong, char** container);
+
 /*
  * This method will parse the argument list and writes all arguments in output
  * which are not an identifier or an argument for an identifier.
@@ -72,9 +83,9 @@ int eargs_addArgumentFlag(char* argShort, char* argLong, bool* container);
  * 	Array with arguments.
  *
  * @param char** output
- * 	Array for the output arguments. Array must be initialized and 
+ * 	Array for the output arguments. Array must be initialized and
  * 	have at least enough memory for containing all arguments from
- * 	argv.
+ * 	argv or NULL.
  * @param void* config
  * 	Pointer of the config struct. This struct is passed to the
  * 	functions argument functions. It must be defined by the user of
