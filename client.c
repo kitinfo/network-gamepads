@@ -136,8 +136,24 @@ int setType(int argc, char** argv, Config* config) {
 	return 0;
 }
 
+int usage(int argc, char** argv, Config* config) {
+	printf("%s usage:\n"
+			"%s [<options>] <device>\n"
+			"    -t, --type          - type of the device (this should be set)\n"
+			"    -?, --help          - this help\n"
+			"    -v, --verbosity     - set the verbosity (from 0: ERROR to 5: DEBUG)\n"
+			"    -h, --host          - set the host\n"
+			"    -p, --port          - set the port\n",
+			config->program_name, config->program_name);
+	return -1;
+}
+
 void add_arguments(Config* config) {
 	eargs_addArgument("-t", "--type", setType, 1);
+	eargs_addArgument("-?", "--help", usage, 0);
+	eargs_addArgumentString("-h", "--host", &config->host);
+	eargs_addArgumentString("-p", "--port", &config->port);
+	eargs_addArgumentString("-pw", "--password", &config->password);
 	eargs_addArgumentUInt("-v", "--verbosity", &config->log.verbosity);
 }
 

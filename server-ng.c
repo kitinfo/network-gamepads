@@ -10,18 +10,24 @@
 
 #include "libs/logger.h"
 #include "libs/logger.c"
+#include "libs/easy_args.h"
+#include "libs/easy_args.c"
 #include "network.h"
 #include "protocol.h"
 #include "structures.h"
 #include "uinput.h"
 #include "uinput.c"
+#include "server-ng.h"
 
 volatile sig_atomic_t shutdown_server = 0;
-char* global_password = NULL;
 gamepad_client clients[MAX_CLIENTS] = {};
 
 void signal_handler(int param) {
 	shutdown_server = 1;
+}
+
+ssize_t send_message(int fd, char* message) {
+	return send(fd, message, strlen(message), 0);
 }
 
 int client_close(LOGGER log, gamepad_client* client, bool cleanup){
@@ -30,7 +36,7 @@ int client_close(LOGGER log, gamepad_client* client, bool cleanup){
 		client->token[0] = 0;
 	}
 	else{
-		fprintf(stderr, "Closing client connection\n");
+		logprintf(log, LOG_INFO, "Closing client connection\n");
 	}
 
 	if(client->fd >= 0){
@@ -42,19 +48,21 @@ int client_close(LOGGER log, gamepad_client* client, bool cleanup){
 	return 0;
 }
 
-int client_connection(LOGGER log, int listener){
+int client_connection(Config* config, int listener){
 	size_t client_ident;
 	unsigned u;
 	for(client_ident = 0; client_ident < MAX_CLIENTS && clients[client_ident].fd >= 0; client_ident++){
 	}
 
 	if(client_ident == MAX_CLIENTS){
-		//TODO no client slot left, turn away
-		logprintf(log, LOG_ERROR, "Client slots exhausted, turning connection away\n");
+		logprintf(config->log, LOG_ERROR, "Client slots exhausted, turning connection away\n");
+		int fd = accept(listener, NULL, NULL);
+		send_message(fd, "400 Too many clients\n");
+		close(fd);
 		return 0;
 	}
 
-	logprintf(log, LOG_INFO, "New client in slot %zu\n", client_ident);
+	logprintf(config->log, LOG_INFO, "New client in slot %zu\n", client_ident);
 	clients[client_ident].fd = accept(listener, NULL, NULL);
 
 	//regenerate reconnection token
@@ -69,8 +77,8 @@ int client_connection(LOGGER log, int listener){
 bool create_node(LOGGER log, gamepad_client* client, struct device_meta* meta) {
 	//generate libevdev device
 	if(!create_device(log, client, meta)) {
-		fprintf(stderr, "Failed to create evdev node\n");
-		send(client->fd, "500 Cannot create evdev node\0", 29, 0);
+		logprintf(log, LOG_ERROR, "Failed to create evdev node\n");
+		send_message(client->fd, "500 Cannot create evdev node\n");
 		return false;
 	}
 
@@ -126,8 +134,7 @@ bool set_abs_value(char* token, struct device_meta* meta) {
 
 	return set_abs_value_for(token, code, meta);
 }
-
-bool handle_hello(LOGGER log, gamepad_client* client) {
+bool handle_hello(Config* config, gamepad_client* client) {
 	char* token = strtok((char*) client->input_buffer, "\n");
 	char* endptr;
 	// help for device creation
@@ -153,13 +160,14 @@ bool handle_hello(LOGGER log, gamepad_client* client) {
 		// HELLO <version>
 		if (!strncmp(token, "HELLO ", 6)) {
 			if (strcmp(token + 6, PROTOCOL_VERSION)) {
-				fprintf(stderr, "Disconnecting client with invalid protocol version %s\n", token);
-				send(client->fd, "400 Protocol version mismatch\0", 30, 0);
+				logprintf(config->log, LOG_INFO, "Disconnecting client with invalid protocol version %s\n", token);
+				send_message(client->fd, "400 Protocol version mismatch\n");
 				return false;
 			}
 		} else if (!strncmp(token, "ABS_", 4) && strlen(token) > 4) {
 			if (!set_abs_value(token + 4, &meta)) {
-				fprintf(stderr, "Cannot parse ABS_: %s\n", token);
+				logprintf(config->log, LOG_INFO, "Cannot parse ABS_: %s\n", token);
+				send_message(client->fd, "400 Cannot parse ABS value\n");
 				return false;
 			}
 		// vendor id of the device
@@ -167,7 +175,8 @@ bool handle_hello(LOGGER log, gamepad_client* client) {
 		} else if (!strncmp(token, "VENDOR ", 7)) {
 			meta.id.vendor = strtol(token + 7, &endptr, 16);
 			if (token + 7 == endptr) {
-				fprintf(stderr, "vendor_id was not a valid number (%s).\n", token + 7);
+				logprintf(config->log, LOG_INFO, "vendor_id was not a valid number (%s).\n", token + 7);
+				send_message(client->fd, "400 Cannot parse vendor id\n");
 				return false;
 			}
 		// product id of the device
@@ -175,7 +184,8 @@ bool handle_hello(LOGGER log, gamepad_client* client) {
 		} else if (!strncmp(token, "PRODUCT ", 8)) {
 			meta.id.product = strtol(token + 8, &endptr, 16);
 			if (token + 7 == endptr) {
-				fprintf(stderr, "product_id was not a valid number (%s).\n", token + 8);
+				logprintf(config->log, LOG_INFO, "product_id was not a valid number (%s).\n", token + 8);
+				send_message(client->fd, "400 Cannot parse product id\n");
 				return false;
 			}
 		// bus type of the device
@@ -183,7 +193,8 @@ bool handle_hello(LOGGER log, gamepad_client* client) {
 		} else if (!strncmp(token, "BUSTYPE ", 8)) {
 			meta.id.bustype = strtol(token + 8, &endptr, 16);
 			if (token + 7 == endptr) {
-				fprintf(stderr, "bustype was not a valid number (%s).\n", token + 8);
+				logprintf(config->log, LOG_INFO, "bustype was not a valid number (%s).\n", token + 8);
+				send_message(client->fd, "400 Cannot parse bustype\n");
 				return false;
 			}
 		// version of the device
@@ -191,7 +202,8 @@ bool handle_hello(LOGGER log, gamepad_client* client) {
 		} else if (!strncmp(token, "VERSION ", 8)) {
 			meta.id.version = strtol(token + 8, &endptr, 16);
 			if (token + 7 == endptr) {
-				fprintf(stderr, "version was not a valid number (%s).\n", token + 8);
+				logprintf(config->log, LOG_INFO, "version was not a valid number (%s).\n", token + 8);
+				send_message(client->fd, "400 Cannot parse device version\n");
 				return false;
 			}
 
@@ -201,7 +213,8 @@ bool handle_hello(LOGGER log, gamepad_client* client) {
 		} else if (!strncmp(token, "DEVTYPE ", 8)) {
 			meta.devtype = strtol(token + 8, &endptr, 10);
 			if (token + 7 == endptr) {
-				fprintf(stderr, "devtype was not a valid number (%s).\n", token + 8);
+				logprintf(config->log, LOG_INFO, "devtype was not a valid number (%s).\n", token + 8);
+				send_message(client->fd, "400 Cannot parse device type\n");
 				return false;
 			}
 		// name of the device
@@ -211,24 +224,24 @@ bool handle_hello(LOGGER log, gamepad_client* client) {
 		// password for this server
 		// PASSWORD <password>
 		} else if (!strncmp(token, "PASSWORD ", 9)) {
-			if (strcmp(token + 9, global_password)) {
-				fprintf(stderr, "Disconnecting client with invalid access token\n");
-				send(client->fd, "401 Incorrect password or token\0", 32, 0);
+			if (strcmp(token + 9, config->password)) {
+				logprintf(config->log, LOG_INFO, "Disconnecting client with invalid access token\n");
+				send_message(client->fd, "401 Incorrect password or token\n");
 				return false;
 			}
 		} else {
-			fprintf(stderr, "Unkown command: %s\n", token);
-			send(client->fd, "400 Unkown command\0", 19, 0);
+			logprintf(config->log, LOG_INFO, "Unkown command: %s\n", token);
+			send_message(client->fd, "400 Unkown command\n");
 			return false;
 		}
 
 		token = strtok(NULL, "\n");
 	}
 
-	return create_node(log, client, &meta);
+	return create_node(config->log, client, &meta);
 }
 
-int client_data(LOGGER log, gamepad_client* client){
+int client_data(Config* config, gamepad_client* client){
 	ssize_t bytes;
 	size_t u;
 	struct input_event* event = (struct input_event*) client->input_buffer;
@@ -237,19 +250,19 @@ int client_data(LOGGER log, gamepad_client* client){
 
 	//check if closed
 	if(bytes < 0){
-		perror("recv");
-		return client_close(log, client, false);
+		logprintf(config->log, LOG_ERROR, "Error on recviece: %s\n", strerror(errno));
+		return client_close(config->log, client, false);
 	}
 	else if(bytes == 0){
-		return client_close(log, client, false);
+		return client_close(config->log, client, false);
 	}
 
 	client->scan_offset += bytes;
 
 	//check for overfull buffer
 	if(sizeof(client->input_buffer) - client->scan_offset < 10){
-		logprintf(log, LOG_WARNING, "Disconnecting spammy client\n");
-		return client_close(log, client, false);
+		logprintf(config->log, LOG_WARNING, "Disconnecting spammy client\n");
+		return client_close(config->log, client, false);
 	}
 
 	if(!client->passthru){
@@ -260,19 +273,19 @@ int client_data(LOGGER log, gamepad_client* client){
 			}
 			if(u < client->scan_offset){
 				if(!strncmp((char*) client->input_buffer, "HELLO ", 6)) {
-					if (!handle_hello(log, client)) {
-						return client_close(log, client, true);
+					if (!handle_hello(config, client)) {
+						return client_close(config->log, client, true);
 					}
 				} else if (!strncmp((char*) client->input_buffer, "CONTINUE ", 9)) {
 					if(strcmp((char*) client->input_buffer + 9, client->token)){
-						fprintf(stderr, "Disconnecting client with invalid access token\n");
+						logprintf(config->log, LOG_INFO, "Disconnecting client with invalid access token\n");
 						send(client->fd, "401 Incorrect password or token\0", 32, 0);
-						return client_close(log, NULL, true);
+						return client_close(config->log, NULL, true);
 					}
 				} else {
-						fprintf(stderr, "Disconnecting client with invalid access token\n");
+						logprintf(config->log, LOG_INFO, "Disconnecting client with invalid access token\n");
 						send(client->fd, "401 Incorrect password or token\0", 32, 0);
-						return client_close(log, client, false);
+						return client_close(config->log, client, false);
 				}
 				//update offset
 				client->scan_offset -= (u + 1);
@@ -283,13 +296,13 @@ int client_data(LOGGER log, gamepad_client* client){
 				//notify client
 				send(client->fd, "200 ", 4, 0);
 				send(client->fd, client->token, strlen(client->token) + 1, 0);
-				logprintf(log, LOG_INFO, "Client passthrough enabled with %zu bytes of data left\n", client->scan_offset);
+				logprintf(config->log, LOG_INFO, "Client passthrough enabled with %zu bytes of data left\n", client->scan_offset);
 				return true;
 
 			} else {
-				logprintf(log, LOG_ERROR, "Disconnecting non-conforming client\n");
+				logprintf(config->log, LOG_ERROR, "Disconnecting non-conforming client\n");
 				send(client->fd, "500 Unknown greeting\0", 21, 0);
-				return client_close(log, client, true);
+				return client_close(config->log, client, true);
 			}
 		}
 	}
@@ -299,7 +312,7 @@ int client_data(LOGGER log, gamepad_client* client){
 		while(client->scan_offset >= sizeof(struct input_event)){
 			//send message
 			write(client->ev_fd, event, sizeof(struct input_event));
-			logprintf(log, LOG_DEBUG, "Writing event: client:%zu, type:%d, code:%d, value:%d\n", client - clients, event->type, event->code, event->value);
+			logprintf(config->log, LOG_DEBUG, "Writing event: client:%zu, type:%d, code:%d, value:%d\n", client - clients, event->type, event->code, event->value);
 			//update offset
 			client->scan_offset -= sizeof(struct input_event);
 			//copy back
@@ -310,26 +323,60 @@ int client_data(LOGGER log, gamepad_client* client){
 	return 0;
 }
 
+int usage(int argc, char** argv, Config* config) {
+	printf("%s usage:\n"
+			"%s [<options>]\n"
+			"    -h,  --help                 - show this help\n"
+			"    -p,  --port <port>          - sets the port\n"
+			"    -b,  --bind <bind>          - sets the bind address\n"
+			"    -pw, --password <password>  - sets the password\n",
+			config->program_name, config->program_name);
+
+	return -1;
+}
+
+bool add_arguments(Config* config) {
+	eargs_addArgument("-h", "--help", usage, 0);
+	eargs_addArgumentString("-p", "--port", &config->port);
+	eargs_addArgumentString("-b", "--bind", &config->bindhost);
+	eargs_addArgumentString("-pw", "--password", &config->password);
+	eargs_addArgumentUInt("-v", "--verbosity", &config->log.verbosity);
+
+	return true;
+}
+
 int main(int argc, char** argv) {
-	//FIXME at least the port should be done via argument
 	size_t u;
 	fd_set readfds;
 	int maxfd;
 	int status;
-	char* bindhost = getenv("SERVER_HOST") ? getenv("SERVER_HOST"):DEFAULT_HOST;
-	char* port = getenv("SERVER_PORT") ? getenv("SERVER_PORT"):DEFAULT_PORT;
-	global_password = getenv("SERVER_PW") ? getenv("SERVER_PW"):DEFAULT_PASSWORD;
-	fprintf(stderr, "%s starting\nProtocol Version: %s\n", SERVER_VERSION, PROTOCOL_VERSION);
-	int listen_fd = tcp_listener(bindhost, port);
+	Config config = {
+		.program_name = argv[0],
+		.log = {
+			.stream = stderr,
+			.verbosity = 5
+		},
+		.bindhost = getenv("SERVER_HOST") ? getenv("SERVER_HOST"):DEFAULT_HOST,
+		.port = getenv("SERVER_PORT") ? getenv("SERVER_PORT"):DEFAULT_PORT,
+		.password = getenv("SERVER_PW") ? getenv("SERVER_PW"):DEFAULT_PASSWORD
+	};
+
+	add_arguments(&config);
+	status = eargs_parse(argc, argv, NULL, &config);
+	if (status < 0) {
+		return 1;
+	} else if (status > 0) {
+		logprintf(config.log, LOG_ERROR, "Unkown command line arguments.\n");
+		return usage(argc, argv, &config);
+	}
+
+	logprintf(config.log, LOG_INFO, "%s starting\nProtocol Version: %s\n", SERVER_VERSION, PROTOCOL_VERSION);
+	int listen_fd = tcp_listener(config.bindhost, config.port);
 	if(listen_fd < 0){
 		fprintf(stderr, "Failed to open listener\n");
 		return EXIT_FAILURE;
 	}
 
-	LOGGER log = {
-		.stream = stderr,
-		.verbosity = 5
-	};
 
 	//set up signal handling
 	signal(SIGINT, signal_handler);
@@ -339,7 +386,7 @@ int main(int argc, char** argv) {
 		clients[u].fd = -1;
 	}
 
-	fprintf(stderr, "Now waiting for connections on %s:%s\n", bindhost, port);
+	logprintf(config.log, LOG_INFO, "Now waiting for connections on %s:%s\n", config.bindhost, config.port);
 
 	//core loop
 	while(!shutdown_server){
@@ -356,25 +403,26 @@ int main(int argc, char** argv) {
 		//wait for events
 		status = select(maxfd + 1, &readfds, NULL, NULL, NULL);
 		if(status < 0){
-			perror("select");
+			logprintf(config.log, LOG_ERROR, "Error in select: %s\n", strerror(errno));;
 			shutdown_server = 1;
 		}
 		else{
 			if(FD_ISSET(listen_fd, &readfds)){
+				logprintf(config.log, LOG_INFO, "new connection\n");
 				//handle client connection
-				client_connection(log, listen_fd);
+				client_connection(&config, listen_fd);
 			}
 			for(u = 0; u < MAX_CLIENTS; u++){
 				if(FD_ISSET(clients[u].fd, &readfds)){
 					//handle client data
-					client_data(log, clients + u);
+					client_data(&config, clients + u);
 				}
 			}
 		}
 	}
 
 	for(u = 0; u < MAX_CLIENTS; u++){
-		client_close(log, clients + u, true);
+		client_close(config.log, clients + u, true);
 	}
 	close(listen_fd);
 	return EXIT_SUCCESS;

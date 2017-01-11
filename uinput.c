@@ -29,10 +29,7 @@ bool enable_bits(LOGGER log, int fd, const input_device_bits* what) {
 }
 
 bool enable_device_keys(LOGGER log, int fd, struct device_meta* meta) {
-	if (!enable_bits(log, fd, DEVICE_TYPES[meta->devtype])) {
-		return false;
-	}
-	return true;
+	return enable_bits(log, fd, DEVICE_TYPES[meta->devtype]);
 }
 void init_abs_info(struct device_meta* meta) {
 		// ABS_X
@@ -72,6 +69,7 @@ void init_abs_info(struct device_meta* meta) {
 bool create_device(LOGGER log, gamepad_client* client, struct device_meta* meta) {
 	int uinput_fd = open_uinput();
 	if (!enable_device_keys(log, uinput_fd, meta)) {
+		close(uinput_fd);
 		return false;
 	}
 	struct uinput_user_dev dev = {};
@@ -86,12 +84,14 @@ bool create_device(LOGGER log, gamepad_client* client, struct device_meta* meta)
 
 	if (ret < 0) {
 		logprintf(log, LOG_ERROR, "Cannot write to uinput device: %s\n", strerror(errno));
+		close(uinput_fd);
 		return false;
 	}
 
 	ret = ioctl(uinput_fd, UI_DEV_CREATE);
 
 	if (ret < 0) {
+		close(uinput_fd);
 		logprintf(log, LOG_ERROR, "Cannot create device: %s\n", strerror(errno));
 		return false;
 	}
@@ -109,6 +109,7 @@ bool cleanup_device(LOGGER log, gamepad_client* client) {
 		logprintf(log, LOG_ERROR, "Cannot destroy device: %s\n", strerror(errno));
 		return false;
 	}
+	close(client->ev_fd);
 
 	return true;
 }
