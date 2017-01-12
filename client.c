@@ -196,7 +196,7 @@ void add_arguments(Config* config) {
 }
 
 int device_reopen(LOGGER log, char* file) {
-	int fd = NULL;
+	int fd = -1;
 
 	while (!quit_signal) {
 		fd = open(file, O_RDONLY);
@@ -208,7 +208,7 @@ int device_reopen(LOGGER log, char* file) {
 	}
 
 	logprintf(log, LOG_ERROR, "User signal. Quitting...\n");
-	return 0;
+	return -1;
 }
 
 int main(int argc, char** argv){
@@ -277,7 +277,7 @@ int main(int argc, char** argv){
 			close(event_fd);
 			event_fd = device_reopen(config.log, output[0]);
 
-			if (!event_fd) {
+			if (event_fd < 0) {
 				break;
 			} else {
 				continue;
