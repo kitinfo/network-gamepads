@@ -274,6 +274,7 @@ int main(int argc, char** argv){
 		bytes = read(event_fd, &ev, sizeof(ev));
 		if(bytes < 0){
 			logprintf(config.log, LOG_ERROR, "read() error: %s\nTrying to reconnect.\n", strerror(errno));
+			close(event_fd);
 			event_fd = device_reopen(config.log, output[0]);
 
 			if (!event_fd) {
