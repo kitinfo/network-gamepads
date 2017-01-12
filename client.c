@@ -8,6 +8,7 @@
 #include <linux/uinput.h>
 #include <unistd.h>
 #include <errno.h>
+#include <signal.h>
 
 #include "libs/logger.h"
 #include "libs/logger.c"
@@ -19,6 +20,8 @@
 #include "client.h"
 
 const unsigned TOKEN_LEN = 64;
+sig_atomic_t quit_signal = false;
+
 
 int continue_connect(int sock_fd, char* token) {
 	ssize_t bytes = 0;
@@ -153,6 +156,10 @@ char* init_connect(int sock_fd, int device_fd, Config* config) {
 	return token;
 }
 
+void quit() {
+	quit_signal = true;
+}
+
 int setType(int argc, char** argv, Config* config) {
 	if (!strcmp(argv[1], "mouse")) {
 		config->type = 1;
@@ -186,6 +193,22 @@ void add_arguments(Config* config) {
 	eargs_addArgumentString("-p", "--port", &config->port);
 	eargs_addArgumentString("-pw", "--password", &config->password);
 	eargs_addArgumentUInt("-v", "--verbosity", &config->log.verbosity);
+}
+
+int device_reopen(LOGGER log, char* file) {
+	int fd = NULL;
+
+	while (!quit_signal) {
+		fd = open(file, O_RDONLY);
+		if (fd > 0) {
+			return fd;
+		}
+		logprintf(log, LOG_ERROR, "Cannot reconnect to device. Waiting for 1 seconds.\n");
+		sleep(1);
+	}
+
+	logprintf(log, LOG_ERROR, "User signal. Quitting...\n");
+	return 0;
 }
 
 int main(int argc, char** argv){
@@ -222,6 +245,15 @@ int main(int argc, char** argv){
 		return EXIT_FAILURE;
 	}
 
+	struct sigaction act = {
+		.sa_handler = &quit
+	};
+
+	if (sigaction(SIGINT, &act, NULL) < 0) {
+		logprintf(config.log, LOG_ERROR, "Failed to set signal mask\n");
+		return 10;
+	}
+
 	sock_fd = tcp_connect(config.host, config.port);
 	if(sock_fd < 0) {
 		logprintf(config.log, LOG_ERROR, "Failed to reach server at %s port %s\n", config.host, config.port);
@@ -237,12 +269,18 @@ int main(int argc, char** argv){
 	int grab = 1;
  	bytes = ioctl(event_fd, EVIOCGRAB, &grab);
 
-	while(true){
+	while(!quit_signal){
 		//block on read
 		bytes = read(event_fd, &ev, sizeof(ev));
 		if(bytes < 0){
-			printf("read() error\n");
-			break;
+			logprintf(config.log, LOG_ERROR, "read() error: %s\nTrying to reconnect.\n", strerror(errno));
+			event_fd = device_reopen(config.log, output[0]);
+
+			if (!event_fd) {
+				break;
+			} else {
+				continue;
+			}
 		}
 		if(bytes == sizeof(ev) &&
 				(ev.type == EV_KEY || ev.type == EV_SYN || ev.type == EV_REL || ev.type == EV_ABS || ev.type == EV_MSC)){
