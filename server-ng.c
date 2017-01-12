@@ -31,13 +31,13 @@ ssize_t send_message(int fd, char* message) {
 }
 
 int client_close(LOGGER log, gamepad_client* client, bool cleanup){
-	if(cleanup){
+//	if(cleanup){
 		cleanup_device(log, client);
 		client->token[0] = 0;
-	}
-	else{
+//	}
+//	else{
 		logprintf(log, LOG_INFO, "Closing client connection\n");
-	}
+//	}
 
 	if(client->fd >= 0){
 		close(client->fd);
@@ -285,7 +285,7 @@ int client_data(Config* config, gamepad_client* client){
 				} else {
 						logprintf(config->log, LOG_INFO, "Disconnecting client with invalid access token\n");
 						send(client->fd, "401 Incorrect password or token\0", 32, 0);
-						return client_close(config->log, client, false);
+						return client_close(config->log, client, true);
 				}
 				//update offset
 				client->scan_offset -= (u + 1);
