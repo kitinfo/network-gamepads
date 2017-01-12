@@ -154,6 +154,8 @@ bool handle_hello(Config* config, gamepad_client* client) {
 		.absfuzz = {0}
 	};
 
+	init_abs_info(meta);
+
 	while(token != NULL && strlen(token) > 0) {
 
 		// hello followed by the protocol version
