@@ -26,12 +26,13 @@ typedef struct {
 
 	/* MICE */
 const input_device_bits MICE_KEYBITS = {
-	.len = 10,
+	.len = 11,
 	.bits = {
 		{ UI_SET_EVBIT, EV_SYN },
 		{ UI_SET_EVBIT, EV_KEY },
 		{ UI_SET_EVBIT, EV_REL },
 		{ UI_SET_EVBIT, EV_MSC },
+		{ UI_SET_MSCBIT, MSC_SCAN },
 		{ UI_SET_KEYBIT, BTN_LEFT },
 		{ UI_SET_KEYBIT, BTN_RIGHT },
 		{ UI_SET_KEYBIT, BTN_MIDDLE },
@@ -42,12 +43,14 @@ const input_device_bits MICE_KEYBITS = {
 };
 	/* GAMEPAD */
 const input_device_bits GAMEPAD_KEYBITS = {
-	.len = 34,
+	.len = 38,
 	.bits = {
 		{ UI_SET_EVBIT, EV_SYN },
 		{ UI_SET_EVBIT, EV_KEY },
 		{ UI_SET_EVBIT, EV_ABS },
 		{ UI_SET_EVBIT, EV_FF },
+		{ UI_SET_EVBIT, EV_MSC },
+		{ UI_SET_MSCBIT, MSC_SCAN },
 		{ UI_SET_KEYBIT, BTN_A },
 		{ UI_SET_KEYBIT, BTN_B },
 		{ UI_SET_KEYBIT, BTN_C },
@@ -70,6 +73,8 @@ const input_device_bits GAMEPAD_KEYBITS = {
 		{ UI_SET_KEYBIT, BTN_BASE2 },
 		{ UI_SET_KEYBIT, BTN_BASE3 },
 		{ UI_SET_KEYBIT, BTN_BASE4 },
+		{ UI_SET_KEYBIT, BTN_BASE5 },
+		{ UI_SET_KEYBIT, BTN_BASE6 },
 		{ UI_SET_ABSBIT, ABS_X },
 		{ UI_SET_ABSBIT, ABS_Y },
 		{ UI_SET_ABSBIT, ABS_Z },
@@ -82,9 +87,11 @@ const input_device_bits GAMEPAD_KEYBITS = {
 };
 	/* KEYBOARD */
 const input_device_bits KEYBOARD_KEYBITS = {
-	.len = 137,
+	.len = 139,
 	.bits = {{ UI_SET_EVBIT, EV_SYN },
 		{ UI_SET_EVBIT, EV_KEY },
+		{ UI_SET_EVBIT, EV_MSC },
+		{ UI_SET_MSCBIT, MSC_SCAN },
 		{ UI_SET_KEYBIT, KEY_ESC },
 		{ UI_SET_KEYBIT, KEY_1 },
 		{ UI_SET_KEYBIT, KEY_2 },
@@ -225,8 +232,11 @@ const input_device_bits KEYBOARD_KEYBITS = {
 
 	/* DEFAULT */
 const input_device_bits DEFAULT_KEYBITS = {
-	.len = 1,
-	.bits = {{ UI_SET_EVBIT, EV_SYN }}
+	.len = 3,
+	.bits = {{ UI_SET_EVBIT, EV_SYN },
+		{ UI_SET_EVBIT, EV_MSC },
+		{ UI_SET_MSCBIT, MSC_SCAN },
+	}
 };
 
 const input_device_bits* DEVICE_TYPES[] = {
