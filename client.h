@@ -7,5 +7,6 @@ typedef struct {
 	char* password;
 	char* host;
 	char* port;
-	int type;
+	uint8_t type;
+	uint8_t slot;
 } Config;

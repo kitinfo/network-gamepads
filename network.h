@@ -5,8 +5,85 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
+#include "libs/logger.h"
+#include "protocol.h"
 
 #define LISTEN_QUEUE_LENGTH 128
+
+
+bool send_message(LOGGER log, int sock_fd, void* data, unsigned len) {
+	ssize_t bytes = len;
+	ssize_t status = 0;
+
+	while (bytes > 0) {
+		status = send(sock_fd, data, len, MSG_NOSIGNAL);
+
+		if (status < 0) {
+			logprintf(log, LOG_ERROR, "Cannot send data: %s", strerror(errno));
+			return false;
+		}
+
+		bytes -= status;
+	}
+
+
+	return true;
+}
+
+ssize_t recv_message(LOGGER log, int sock_fd, char buf[], unsigned len, char oldbuf[], unsigned oldlen) {
+	ssize_t bytes = 0;
+	ssize_t status = 0;
+	ssize_t length_needed = -1;
+
+	// copy back old buffer
+	if (oldbuf && oldlen > 0) {
+		int i;
+		for (i = 0; i < oldlen; i++) {
+			buf[i] = oldbuf[i];
+		}
+		bytes = oldlen;
+
+		length_needed = get_size_from_command(buf, status);
+
+		if (length_needed < 0) {
+			logprintf(log, LOG_ERROR, "Unkown message type %d.\n", buf[0]);
+			return -1;
+		}
+
+		// not enough bytes for getting the proper size.
+		if (length_needed == 0) {
+			bytes++;
+		}
+	}
+
+	while (length_needed < 1 || bytes < length_needed) {
+
+		status = recv(sock_fd, buf + bytes, len - bytes, 0);
+
+		if (status < 0) {
+			logprintf(log, LOG_ERROR, "Cannot recv data: %s\n", strerror(errno));
+			return -1;
+		}
+
+		if (status > 0 && length_needed == 0) {
+			length_needed = get_size_from_command(buf, status);
+
+			if (length_needed < 0) {
+				logprintf(log, LOG_ERROR, "Unkown message type %d.\n", buf[0]);
+				return -1;
+			}
+
+			// not enough bytes for getting the proper size.
+			if (length_needed == 0) {
+				bytes++;
+			}
+		}
+
+		bytes += status;
+	}
+
+	return bytes;
+}
 
 int tcp_connect(char* host, char* port){
 	int sockfd = -1, error;

@@ -19,39 +19,7 @@
 #include "protocol.h"
 #include "client.h"
 
-const unsigned TOKEN_LEN = 64;
 sig_atomic_t quit_signal = false;
-
-
-int continue_connect(int sock_fd, char* token) {
-	ssize_t bytes = 0;
-	char msg[MSG_MAX + 1];
-
-	bytes = snprintf(msg, MSG_MAX, "CONTINUE %s %s\n", PROTOCOL_VERSION, token);
-	if(bytes >= MSG_MAX) {
-		printf("Message would have been too long\n");
-		return -1;
-	}
-
-	send(sock_fd, msg, bytes + 1, 0);
-	memset(msg, 0, MSG_MAX + 1);
-
-	bytes = recv(sock_fd, msg, MSG_MAX, 0);
-	if(bytes < 0) {
-		perror("continue_connect/recv");
-		return -1;
-	}
-
-	if (!strncmp(msg, "403", 3)) {
-		printf("Token expired");
-		return 0;
-	} else if (strncmp(msg, "200", 3)) {
-		printf("Unkown error (%s)", msg + 4);
-		return -1;
-	}
-	return 1;
-}
-
 
 bool get_abs_info(Config* config, int device_fd, int abs, struct input_absinfo* info) {
 	if (ioctl(device_fd, EVIOCGABS(abs), info)) {
@@ -61,99 +29,133 @@ bool get_abs_info(Config* config, int device_fd, int abs, struct input_absinfo* 
 	return true;
 }
 
-char* add_abs_info(Config* config, int device_fd) {
+bool send_abs_info(int sock_fd, int device_fd, Config* config) {
 
 	int keys[] = {
 		ABS_X, ABS_Y, ABS_Z, ABS_RX, ABS_RY, ABS_RZ, ABS_HAT0X, ABS_HAT0Y
 	};
-	char* key_names[] = {
-		"X", "Y", "Z", "RX", "RY", "RZ", "HAT0X", "HAT0Y"
-	};
-
-	int bytes = 0;
-	int add_bytes = 0;
-	const char* format = "ABS_%s_MIN %d\nABS_%s_MAX %d\nABS_%s_FLAT %d\nABS_%s_FUZZ %d\n";
-	char* output = strdup("");
 
 	int i;
-	struct input_absinfo info = {0};
+	ABSInfoMessage msg = {
+		.msg_type = MESSAGE_ABSINFO
+	};
 	for (i = 0; i < sizeof(keys) / sizeof(int); i++) {
-		memset(&info, 0, sizeof(info));
-		if (!get_abs_info(config, device_fd, keys[i], &info)) {
+		msg.axis = keys[i];
+		memset(&msg.info, 0, sizeof(msg.info));
+		if (!get_abs_info(config, device_fd, keys[i], &msg.info)) {
 			continue;
 		}
 
-		if (info.minimum != info.maximum) {
-			add_bytes = snprintf(NULL, 0, format, key_names[i], info.minimum, key_names[i], info.maximum, key_names[i], info.flat, key_names[i], info.fuzz);
-			if (add_bytes < 0) {
-				return output;
+		if (msg.info.minimum != msg.info.maximum) {
+			if (!send_message(config->log, sock_fd, &msg, sizeof(msg))) {
+				return false;
 			}
-
-			output = realloc(output, bytes + add_bytes + 1);
-			bytes += snprintf(output + bytes, add_bytes + 1, format, key_names[i], info.minimum, key_names[i], info.maximum, key_names[i], info.flat, key_names[i], info.fuzz);
 		}
 	}
 
-	return output;
+	return true;
 }
 
+bool setup_device(int sock_fd, int device_fd, Config* config) {
+	unsigned msglen = 3 + sizeof(struct input_event) + UINPUT_MAX_NAME_SIZE;
+	DeviceMessage* msg = malloc(msglen);
+	memset(msg->name, 0, UINPUT_MAX_NAME_SIZE);
 
-char* init_connect(int sock_fd, int device_fd, Config* config) {
-	ssize_t bytes;
-	//FIXME this only allocates enough storage for one message
-	char msg[MSG_MAX + 1];
+	msg->msg_type = MESSAGE_DEVICE;
+	msg->type = config->type;
+	msg->length = UINPUT_MAX_NAME_SIZE;
 
-	struct input_id id = {0};
-
-	if (ioctl(device_fd, EVIOCGID, &id) < 0) {
-		logprintf(config->log, LOG_ERROR, "Cannot query device infos: %s\n", strerror(errno));
-		return NULL;
+	if (ioctl(device_fd, EVIOCGID, &msg->ids) < 0) {
+		logprintf(config->log, LOG_ERROR, "Cannot query device ids: %s\n", strerror(errno));
+		return false;
 	}
-	char dev_name[UINPUT_MAX_NAME_SIZE];
-	memset(dev_name, 0, sizeof(dev_name));
-	if (ioctl(device_fd, EVIOCGNAME(sizeof(dev_name) - 1), &dev_name) < 0) {
+
+	if (ioctl(device_fd, EVIOCGNAME(UINPUT_MAX_NAME_SIZE - 1), &msg->name) < 0) {
 		logprintf(config->log, LOG_ERROR, "Cannot query device name: %s\n", strerror(errno));
-		return NULL;
-	}
-	char* absinfo = add_abs_info(config, device_fd);
-
-	bytes = snprintf(msg, MSG_MAX, "HELLO %s\n%sVENDOR 0x%.4x\nPRODUCT 0x%.4x\nBUSTYPE 0x%.4x\nDEVTYPE %d\nVERSION 0x%.4x\nNAME %s\nPASSWORD %s\n\n", PROTOCOL_VERSION, absinfo ,id.vendor, id.product, id.bustype, config->type, id.version, dev_name, config->password);
-
-	logprintf(config->log, LOG_DEBUG, "Generated message: %s", msg);
-	if(bytes >= MSG_MAX) {
-		logprintf(config->log, LOG_ERROR, "Generated message would have been too long\n");
-		return NULL;
+		return false;
 	}
 
-	send(sock_fd, msg, bytes + 1, 0);
-
-	memset(msg, 0, sizeof(msg));
-	//FIXME this might not be in one message
-	bytes = recv(sock_fd, msg, MSG_MAX, 0);
-
-	if (bytes < 0) {
-		logprintf(config->log, LOG_ERROR, "init_connect/recv: %s\n", strerror(errno));
-		return NULL;
-	}
-	logprintf(config->log, LOG_DEBUG, "Answer: %s\n", msg);
-	if (!strncmp(msg, "401", 3)) {
-		logprintf(config->log, LOG_ERROR, "Invalid password supplied\n");
-		return NULL;
-	} else if (!strncmp(msg, "400", 3)) {
-		char* s_version = msg + 4;
-		logprintf(config->log, LOG_ERROR, "Version not matched (Server: %s != Client %s)\n", s_version, PROTOCOL_VERSION);
-		return NULL;
-	} else if (strncmp(msg, "200", 3)) {
-		char* error = msg + 4;
-		logprintf(config->log, LOG_ERROR, "Unkown error (%s)\n", error);
-		return NULL;
+	if (!send_message(config->log, sock_fd, msg, msglen)) {
+		return false;
 	}
 
-	unsigned token_len = strlen(msg + 4) + 1;
-	char* token = malloc(token_len);
-	strncpy(token, msg + 4, token_len);
+	free(msg);
 
-	return token;
+	if (!send_abs_info(sock_fd, device_fd, config)) {
+		return false;
+	}
+	uint8_t msg_type = MESSAGE_HELLO_END;
+	if (!send_message(config->log, sock_fd, &msg_type, 1)) {
+		return false;
+	}
+
+	return true;
+}
+
+bool init_connect(int sock_fd, int device_fd, Config* config) {
+
+	char buf[512];
+	ssize_t recv_bytes;
+
+	HelloMessage hello = {
+		.msg_type = 0x01,
+		.version = BINARY_PROTOCOL_VERSION,
+		.slot = config->slot
+	};
+
+	// send hello message
+	if (!send_message(config->log, sock_fd, &hello, sizeof(hello))) {
+		return false;
+	}
+
+	recv_bytes = recv_message(config->log, sock_fd, buf, sizeof(buf), NULL, 0);
+	if (recv_bytes < 0) {
+		return false;
+	}
+
+	// check version
+	if (buf[0] == MESSAGE_VERSION_MISMATCH) {
+		logprintf(config->log, LOG_ERROR, "Version mismatch: %d != %d", PROTOCOL_VERSION, buf[1]);
+		return false;
+	} else if (buf[0] == MESSAGE_PASSWORD_REQUIRED) {
+		int pwlen = strlen(config->password) + 1;
+		// msg_type byte + length byte + pwlen
+		PasswordMessage* passwordMessage = malloc(2 + pwlen);
+
+		passwordMessage->msg_type = 0x01;
+		passwordMessage->length = pwlen;
+		strncpy(passwordMessage->password, config->password, pwlen);
+
+		if (!send_message(config->log, sock_fd, passwordMessage, 2 + pwlen)) {
+			return false;
+		}
+		free(passwordMessage);
+
+		recv_bytes = recv_message(config->log, sock_fd, buf, sizeof(buf), NULL, 0);
+		if (recv_bytes < 0) {
+			return false;
+		}
+	}
+
+	if (buf[0] == MESSAGE_SETUP_REQUIRED) {
+		if (!setup_device(sock_fd, device_fd, config)) {
+			return false;
+		}
+
+		recv_bytes = recv_message(config->log, sock_fd, buf, sizeof(buf), NULL, 0);
+		if (recv_bytes < 0) {
+			return false;
+		}
+	}
+
+	if (buf[0] != MESSAGE_SUCCESS) {
+		return false;
+	}
+
+	logprintf(config->log, LOG_INFO, "We are slot: %d\n", buf[1]);
+	config->slot = buf[1];
+
+	return true;
 }
 
 void quit() {
@@ -222,12 +224,13 @@ int main(int argc, char** argv){
 		.host = getenv("SERVER_HOST") ? getenv("SERVER_HOST"):DEFAULT_HOST,
 		.password = getenv("SERVER_PW") ? getenv("SERVER_PW"):DEFAULT_PASSWORD,
 		.port = getenv("SERVER_PORT") ? getenv("SERVER_PORT"):DEFAULT_PORT,
-		.type = 0
+		.type = 0,
+		.slot = 0
 	};
 
 	int event_fd, sock_fd;
 	ssize_t bytes;
-	struct input_event ev;
+	DataMessage data;
 
 	add_arguments(&config);
 	char* output[argc];
@@ -257,22 +260,29 @@ int main(int argc, char** argv){
 	sock_fd = tcp_connect(config.host, config.port);
 	if(sock_fd < 0) {
 		logprintf(config.log, LOG_ERROR, "Failed to reach server at %s port %s\n", config.host, config.port);
+		close(event_fd);
 		return 2;
 	}
 
-	char* token = init_connect(sock_fd, event_fd, &config);
-	if (token == NULL) {
+	if (!init_connect(sock_fd, event_fd, &config)) {
+		close(event_fd);
+		close(sock_fd);
 		return 3;
 	}
-	logprintf(config.log, LOG_INFO, "token %s\n", token);
+
 	//get exclusive control
 	int grab = 1;
- 	bytes = ioctl(event_fd, EVIOCGRAB, &grab);
+ 	if (ioctl(event_fd, EVIOCGRAB, &grab) < 0) {
+		logprintf(config.log, LOG_WARNING, "Cannot get exclusive access on device: %s\n", strerror(errno));
+		close(event_fd);
+		close(sock_fd);
+		return 4;
+	}
 
 	while(!quit_signal){
 		//block on read
-		bytes = read(event_fd, &ev, sizeof(ev));
-		if(bytes < 0){
+		bytes = read(event_fd, &data.event, sizeof(data.event));
+		if(bytes < 0) {
 			logprintf(config.log, LOG_ERROR, "read() error: %s\nTrying to reconnect.\n", strerror(errno));
 			close(event_fd);
 			event_fd = device_reopen(config.log, output[0]);
@@ -283,37 +293,22 @@ int main(int argc, char** argv){
 				continue;
 			}
 		}
-		if(bytes == sizeof(ev) &&
-				(ev.type == EV_KEY || ev.type == EV_SYN || ev.type == EV_REL || ev.type == EV_ABS || ev.type == EV_MSC)){
-			logprintf(config.log, LOG_DEBUG, "Event type:%d, code:%d, value:%d\n", ev.type, ev.code, ev.value);
-			bytes = send(sock_fd, &ev, sizeof(struct input_event), 0);
+		if(bytes == sizeof(data.event)) {
+			logprintf(config.log, LOG_DEBUG, "Event type:%d, code:%d, value:%d\n", data.event.type, data.event.code, data.event.value);
 
-			if(bytes < 0){
+			if(!send_message(config.log, sock_fd, &data, sizeof(data))) {
 				//check if connection is closed
-				if(errno == ECONNRESET) {
-					int status = continue_connect(sock_fd, token);
-					if (status == 0) { // reconnect is failed, trying init_connect
-						free(token);
-						token = init_connect(sock_fd, event_fd, &config);
-						if (token == NULL) { // cannot reconnect to server
-							logprintf(config.log, LOG_ERROR, "Cannot reconnect to server.\n");
-							break;
-						}
-					} else if (status < 0) {
+				if(errno == ECONNRESET || errno == EPIPE) {
+					if (!init_connect(sock_fd, event_fd, &config)) {
+						logprintf(config.log, LOG_ERROR, "Cannot reconnect to server.\n");
 						break;
 					}
 				} else {
-					logprintf(config.log, LOG_ERROR, "read() error\n");
 					break;
 				}
 			}
-		}
-		else{
-			if (bytes == sizeof(ev)) {
-				logprintf(config.log, LOG_WARNING, "Unsupported event type (type = %d)\n", ev.type);
-			} else {
-				logprintf(config.log, LOG_WARNING, "Short read from event descriptor (%zd bytes)\n", bytes);
-			}
+		} else{
+			logprintf(config.log, LOG_WARNING, "Short read from event descriptor (%zd bytes)\n", bytes);
 		}
 	}
 	close(event_fd);
