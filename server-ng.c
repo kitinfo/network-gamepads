@@ -7,6 +7,7 @@
 
 #define SERVER_VERSION "GamepadServer 1.1"
 #define MAX_CLIENTS 8
+#define MAX_WAITING_CLIENTS 8
 
 #include "libs/logger.h"
 #include "libs/logger.c"
@@ -26,14 +27,9 @@ void signal_handler(int param) {
 	shutdown_server = 1;
 }
 
-ssize_t send_message(int fd, char* message) {
-	return send(fd, message, strlen(message), 0);
-}
-
 int client_close(LOGGER log, gamepad_client* client, bool cleanup){
 //	if(cleanup){
 		cleanup_device(log, client);
-		client->token[0] = 0;
 //	}
 //	else{
 		logprintf(log, LOG_INFO, "Closing client connection\n");
@@ -48,37 +44,32 @@ int client_close(LOGGER log, gamepad_client* client, bool cleanup){
 	return 0;
 }
 
-int client_connection(Config* config, int listener){
+bool client_connection(Config* config, int listener, gamepad_client waiting_queue[MAX_WAITING_CLIENTS]){
 	size_t client_ident;
-	unsigned u;
-	for(client_ident = 0; client_ident < MAX_CLIENTS && clients[client_ident].fd >= 0; client_ident++){
-	}
+	for(client_ident = 0;
+			client_ident < MAX_WAITING_CLIENTS && waiting_queue[client_ident].fd >= 0;
+			client_ident++) {}
 
-	if(client_ident == MAX_CLIENTS){
+	if(client_ident == MAX_WAITING_CLIENTS){
 		logprintf(config->log, LOG_ERROR, "Client slots exhausted, turning connection away\n");
 		int fd = accept(listener, NULL, NULL);
-		send_message(fd, "400 Too many clients\n");
+		uint8_t err = MESSAGE_CLIENT_SLOTS_EXHAUSTED;
+		send_message(config->log, fd, &err, 1);
 		close(fd);
-		return 0;
+		return true;
 	}
 
 	logprintf(config->log, LOG_INFO, "New client in slot %zu\n", client_ident);
-	clients[client_ident].fd = accept(listener, NULL, NULL);
+	waiting_queue[client_ident].fd = accept(listener, NULL, NULL);
 
-	//regenerate reconnection token
-	if(!clients[client_ident].token[0]){
-		for(u = 0; u < TOKEN_SIZE; u++){
-			clients[client_ident].token[u] = rand() % 26 + 'a';
-		}
-	}
-	return 0;
+	return true;
 }
 
 bool create_node(LOGGER log, gamepad_client* client, struct device_meta* meta) {
 	//generate libevdev device
 	if(!create_device(log, client, meta)) {
 		logprintf(log, LOG_ERROR, "Failed to create evdev node\n");
-		send_message(client->fd, "500 Cannot create evdev node\n");
+		//send_message(client->fd, "500 Cannot create evdev node\n");
 		return false;
 	}
 
@@ -134,6 +125,7 @@ bool set_abs_value(char* token, struct device_meta* meta) {
 
 	return set_abs_value_for(token, code, meta);
 }
+/*
 bool handle_hello(Config* config, gamepad_client* client) {
 	char* token = strtok((char*) client->input_buffer, "\n");
 	char* endptr;
@@ -242,7 +234,87 @@ bool handle_hello(Config* config, gamepad_client* client) {
 
 	return create_node(config->log, client, &meta);
 }
+*/
+bool client_hello(Config* config, gamepad_client* client) {
+	uint8_t ret;
 
+	HelloMessage msg = {0};
+	if (client->bytes_available < sizeof(msg)) {
+		return true;
+	}
+
+	memcpy(&msg, client->input_buffer, sizeof(msg));
+
+	if (msg.msg_type != MESSAGE_HELLO) {
+		ret = MESSAGE_INVALID_COMMAND;
+		send_message(config->log, client->fd, &ret, 1);
+		close(client->fd);
+		client->fd = -1;
+		return false;
+	}
+
+	if (msg.version != BINARY_PROTOCOL_VERSION) {
+		ret = MESSAGE_VERSION_MISMATCH;
+		send_message(config->log, client->fd, &ret, 1);
+		close(client->fd);
+		client->fd = -1;
+	}
+
+	if (msg.slot > 0) {
+		if (msg.slot > MAX_CLIENTS) {
+			ret = MESSAGE_CLIENT_SLOT_TOO_HIGH;
+		} else if (clients[msg.slot].fd != -1) {
+			ret = MESSAGE_CLIENT_SLOT_IN_USE;
+		}
+		send_message(config->log, client->fd, &ret, 1);
+		close(client->fd);
+		client->fd = -1;
+	} else {
+		int i;
+
+		// check for free slot with no ev_fd
+		for (i = 0; i < MAX_CLIENTS; i++) {
+			if (clients[i].fd == -1 && clients[i].ev_fd == -1) {
+				msg.slot = i;
+				break;
+			}
+		}
+
+		// check for free slot with ev_fd device and close the device
+		if (msg.slot == 0) {
+			for (i = 0; i < MAX_CLIENTS; i++) {
+				if (clients[i].fd == -1) {
+					cleanup_device(config->log, clients + i);
+					msg.slot = i;
+					break;
+				}
+			}
+		}
+	}
+	if (strlen(config->password) > 0) {
+		ret = MESSAGE_PASSWORD_REQUIRED;
+	} else if (clients[msg.slot].ev_fd == -1) {
+		ret = MESSAGE_SETUP_REQUIRED;
+	} else {
+		clients[msg.slot].passthru = true;
+		ret = MESSAGE_SUCCESS;
+	}
+
+	if (!send_message(config->log, client->fd, &ret, 1)) {
+		close(client->fd);
+		client->fd = -1;
+	}
+	clients[msg.slot].fd = client->fd;
+	clients[msg.slot].scan_offset = 0;
+	clients[msg.slot].bytes_available = 0;
+	client->bytes_available = 0;
+	client->scan_offset = 0;
+	client->fd = -1;
+	clients[msg.slot].last_ret = ret;
+
+	return true;
+}
+/*
 int client_data(Config* config, gamepad_client* client){
 	ssize_t bytes;
 	size_t u;
@@ -325,7 +397,7 @@ int client_data(Config* config, gamepad_client* client){
 
 	return 0;
 }
-
+*/
 int usage(int argc, char** argv, Config* config) {
 	printf("%s usage:\n"
 			"%s [<options>]\n"
@@ -344,6 +416,28 @@ bool add_arguments(Config* config) {
 	eargs_addArgumentString("-b", "--bind", &config->bindhost);
 	eargs_addArgumentString("-pw", "--password", &config->password);
 	eargs_addArgumentUInt("-v", "--verbosity", &config->log.verbosity);
+
+	return true;
+}
+
+int client_data(Config* config, gamepad_client* client) {
+
+	return 0;
+}
+
+bool recv_data(Config* config, gamepad_client* client) {
+	memmove(client->input_buffer, client->input_buffer + client->scan_offset, client->bytes_available);
+
+	ssize_t bytes;
+
+	bytes = recv(client->fd, client->input_buffer + client->bytes_available, sizeof(client->input_buffer) - client->bytes_available, 0);
+
+	if (bytes < 0) {
+		return false;
+	}
+
+	client->bytes_available += bytes;
+	client->scan_offset = 0;
 
 	return true;
 }
@@ -380,19 +474,25 @@ int main(int argc, char** argv) {
 		return EXIT_FAILURE;
 	}
 
-
 	//set up signal handling
 	signal(SIGINT, signal_handler);
 
 	//initialize all clients to invalid sockets
 	for(u = 0; u < MAX_CLIENTS; u++){
 		clients[u].fd = -1;
+		clients[u].ev_fd = -1;
+	}
+
+	gamepad_client waiting_clients[MAX_WAITING_CLIENTS];
+	for (u = 0; u < MAX_WAITING_CLIENTS; u++) {
+		waiting_clients[u].fd = -1;
+		waiting_clients[u].ev_fd = -1;
 	}
 
 	logprintf(config.log, LOG_INFO, "Now waiting for connections on %s:%s\n", config.bindhost, config.port);
 
 	//core loop
-	while(!shutdown_server){
+	while (!shutdown_server) {
 		FD_ZERO(&readfds);
 		FD_SET(listen_fd, &readfds);
 		maxfd = listen_fd;
@@ -400,6 +500,13 @@ int main(int argc, char** argv) {
 			if(clients[u].fd >= 0){
 				FD_SET(clients[u].fd, &readfds);
 				maxfd = (maxfd > clients[u].fd) ? maxfd:clients[u].fd;
+			}
+		}
+
+		for (u = 0; u < MAX_WAITING_CLIENTS; u++) {
+			if (waiting_clients[u].fd >= 0) {
+				FD_SET(waiting_clients[u].fd, &readfds);
+				maxfd = (maxfd > waiting_clients[u].fd ? maxfd : waiting_clients[u].fd);
 			}
 		}
 
@@ -413,12 +520,29 @@ int main(int argc, char** argv) {
 			if(FD_ISSET(listen_fd, &readfds)){
 				logprintf(config.log, LOG_INFO, "new connection\n");
 				//handle client connection
-				client_connection(&config, listen_fd);
+				client_connection(&config, listen_fd, waiting_clients);
 			}
 			for(u = 0; u < MAX_CLIENTS; u++){
 				if(FD_ISSET(clients[u].fd, &readfds)){
 					//handle client data
+					if (!recv_data(&config, waiting_clients + u)) {
+						close(waiting_clients[u].fd);
+						waiting_clients[u].fd = -1;
+						continue;
+					}
 					client_data(&config, clients + u);
+				}
+			}
+
+			for (u = 0; u < MAX_WAITING_CLIENTS; u++) {
+				if (FD_ISSET(waiting_clients[u].fd, &readfds)) {
+					//handle waiting clients
+					if (recv_data(&config, waiting_clients + u)) {
+						close(waiting_clients[u].fd);
+						waiting_clients[u].fd = -1;
+						continue;
+					}
+					client_hello(&config, waiting_clients + u);
 				}
 			}
 		}

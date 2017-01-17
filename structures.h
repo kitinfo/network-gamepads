@@ -24,7 +24,8 @@ typedef struct /*_GAMEPAD_CLIENT*/ {
 	int fd;
 	int ev_fd;
 	bool passthru;
+	uint8_t last_ret;
 	size_t scan_offset;
-	char token[TOKEN_SIZE + 1];
 	uint8_t input_buffer[INPUT_BUFFER_SIZE];
+	ssize_t bytes_available;
 } gamepad_client;
