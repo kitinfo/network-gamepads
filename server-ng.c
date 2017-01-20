@@ -319,7 +319,7 @@ int handle_data(Config* config, gamepad_client* client, DataMessage* msg) {
 
 	logprintf(config->log, LOG_DEBUG, "Type: 0x%.2x, code: 0x%.2x, value: 0x%.2x\n", msg->event.type, msg->event.code, msg->event.value);
 
-	ssize_t bytes = write(client->fd, &msg->event, sizeof(struct input_event));
+	ssize_t bytes = write(client->ev_fd, &msg->event, sizeof(struct input_event));
 	if (bytes < 0) {
 		logprintf(config->log, LOG_ERROR, "Cannot write to device: %s\n", strerror(errno));
 		return -1;
