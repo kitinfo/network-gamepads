@@ -16,17 +16,18 @@ enum MESSAGE_TYPES {
 	MESSAGE_PASSWORD = 0x02,
 	MESSAGE_ABSINFO = 0x03,
 	MESSAGE_DEVICE = 0x04,
-	MESSAGE_HELLO_END = 0x05,
+	MESSAGE_SETUP_END = 0x05,
 	MESSAGE_DATA =  0x10,
 	MESSAGE_SUCCESS = 0xF0,
 	MESSAGE_VERSION_MISMATCH = 0xF1,
 	MESSAGE_INVALID_PASSWORD = 0xF2,
 	MESSAGE_INVALID_CLIENT_SLOT = 0xF3,
-	MESSAGE_INVALID_COMMAND = 0xF4,
+	MESSAGE_INVALID = 0xF4,
 	MESSAGE_PASSWORD_REQUIRED = 0xF5,
 	MESSAGE_SETUP_REQUIRED = 0xF6,
 	MESSAGE_CLIENT_SLOT_IN_USE = 0xF7,
 	MESSAGE_CLIENT_SLOTS_EXHAUSTED = 0xF8,
+	MESSAGE_QUIT = 0xF9
 };
 
 typedef struct {
@@ -70,14 +71,14 @@ typedef struct {
 	uint8_t slot;
 } SuccessMessage;
 
-int get_size_from_command(char* buf, unsigned len) {
-	switch((uint8_t) buf[0]) {
+int get_size_from_command(uint8_t* buf, unsigned len) {
+	switch(buf[0]) {
 		case MESSAGE_HELLO:
 			return sizeof(HelloMessage);
 		case MESSAGE_PASSWORD:
 			if (len > 1) {
 				// 2 byte for command and length + length of the password
-				return 2 + buf[1];
+				return sizeof(PasswordMessage) + buf[1];
 			} else {
 				return 0;
 			}
@@ -86,7 +87,7 @@ int get_size_from_command(char* buf, unsigned len) {
 		case MESSAGE_DEVICE:
 			if (len > 1) {
 				// 3 bytes for command, length and type + sizeof(struct input_id) + length of the name
-				return 3 + sizeof(struct input_id) + buf[1];
+				return sizeof(DeviceMessage) + buf[1];
 			} else {
 				return 0;
 			}
@@ -94,14 +95,15 @@ int get_size_from_command(char* buf, unsigned len) {
 			return sizeof(SuccessMessage);
 		case MESSAGE_VERSION_MISMATCH:
 			return sizeof(VersionMismatchMessage);
-		case MESSAGE_HELLO_END:
+		case MESSAGE_SETUP_END:
 		case MESSAGE_INVALID_PASSWORD:
 		case MESSAGE_INVALID_CLIENT_SLOT:
-		case MESSAGE_INVALID_COMMAND:
+		case MESSAGE_INVALID:
 		case MESSAGE_PASSWORD_REQUIRED:
 		case MESSAGE_SETUP_REQUIRED:
 		case MESSAGE_CLIENT_SLOT_IN_USE:
 		case MESSAGE_CLIENT_SLOTS_EXHAUSTED:
+		case MESSAGE_QUIT:
 			return 1;
 		case MESSAGE_DATA:
 			return sizeof(DataMessage);

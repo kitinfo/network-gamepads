@@ -23,7 +23,7 @@ struct device_meta {
 typedef struct /*_GAMEPAD_CLIENT*/ {
 	int fd;
 	int ev_fd;
-	bool passthru;
+	struct device_meta meta;
 	uint8_t last_ret;
 	size_t scan_offset;
 	uint8_t input_buffer[INPUT_BUFFER_SIZE];

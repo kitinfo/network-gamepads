@@ -53,13 +53,15 @@ bool send_abs_info(int sock_fd, int device_fd, Config* config) {
 		}
 	}
 
+	logprintf(config->log, LOG_DEBUG, "Finished with ABSInfo\n");
+
 	return true;
 }
 
 bool setup_device(int sock_fd, int device_fd, Config* config) {
-	unsigned msglen = 3 + sizeof(struct input_event) + UINPUT_MAX_NAME_SIZE;
+	ssize_t msglen = sizeof(DeviceMessage) + UINPUT_MAX_NAME_SIZE;
 	DeviceMessage* msg = malloc(msglen);
-	memset(msg->name, 0, UINPUT_MAX_NAME_SIZE);
+	memset(msg, 0, msglen);
 
 	msg->msg_type = MESSAGE_DEVICE;
 	msg->type = config->type;
@@ -70,11 +72,12 @@ bool setup_device(int sock_fd, int device_fd, Config* config) {
 		return false;
 	}
 
-	if (ioctl(device_fd, EVIOCGNAME(UINPUT_MAX_NAME_SIZE - 1), &msg->name) < 0) {
+	if (ioctl(device_fd, EVIOCGNAME(UINPUT_MAX_NAME_SIZE - 1), msg->name) < 0) {
 		logprintf(config->log, LOG_ERROR, "Cannot query device name: %s\n", strerror(errno));
 		return false;
 	}
 
+	logprintf(config->log, LOG_DEBUG, "send setup device message.\n");
 	if (!send_message(config->log, sock_fd, msg, msglen)) {
 		return false;
 	}
@@ -84,7 +87,7 @@ bool setup_device(int sock_fd, int device_fd, Config* config) {
 	if (!send_abs_info(sock_fd, device_fd, config)) {
 		return false;
 	}
-	uint8_t msg_type = MESSAGE_HELLO_END;
+	uint8_t msg_type = MESSAGE_SETUP_END;
 	if (!send_message(config->log, sock_fd, &msg_type, 1)) {
 		return false;
 	}
@@ -94,7 +97,9 @@ bool setup_device(int sock_fd, int device_fd, Config* config) {
 
 bool init_connect(int sock_fd, int device_fd, Config* config) {
 
-	char buf[512];
+	logprintf(config->log, LOG_INFO, "Try to connect to host\n");
+
+	uint8_t buf[INPUT_BUFFER_SIZE];
 	ssize_t recv_bytes;
 
 	HelloMessage hello = {
@@ -113,16 +118,19 @@ bool init_connect(int sock_fd, int device_fd, Config* config) {
 		return false;
 	}
 
+	logprintf(config->log, LOG_DEBUG, "msg_type received: 0x%.2x\n", buf[0]);
+
 	// check version
 	if (buf[0] == MESSAGE_VERSION_MISMATCH) {
 		logprintf(config->log, LOG_ERROR, "Version mismatch: %d != %d", PROTOCOL_VERSION, buf[1]);
 		return false;
 	} else if (buf[0] == MESSAGE_PASSWORD_REQUIRED) {
+		logprintf(config->log, LOG_INFO, "password is required\n");
 		int pwlen = strlen(config->password) + 1;
 		// msg_type byte + length byte + pwlen
 		PasswordMessage* passwordMessage = malloc(2 + pwlen);
 
-		passwordMessage->msg_type = 0x01;
+		passwordMessage->msg_type = MESSAGE_PASSWORD;
 		passwordMessage->length = pwlen;
 		strncpy(passwordMessage->password, config->password, pwlen);
 
@@ -135,9 +143,11 @@ bool init_connect(int sock_fd, int device_fd, Config* config) {
 		if (recv_bytes < 0) {
 			return false;
 		}
+		logprintf(config->log, LOG_DEBUG, "msg_type received: 0x%.2x\n", buf[0]);
 	}
 
 	if (buf[0] == MESSAGE_SETUP_REQUIRED) {
+		logprintf(config->log, LOG_INFO, "setup device\n");
 		if (!setup_device(sock_fd, device_fd, config)) {
 			return false;
 		}
@@ -149,6 +159,7 @@ bool init_connect(int sock_fd, int device_fd, Config* config) {
 	}
 
 	if (buf[0] != MESSAGE_SUCCESS) {
+		logprintf(config->log, LOG_ERROR, "message type is not success (was: %.2x)\n", buf[0]);
 		return false;
 	}
 
@@ -230,7 +241,8 @@ int main(int argc, char** argv){
 
 	int event_fd, sock_fd;
 	ssize_t bytes;
-	DataMessage data;
+	DataMessage data = {0};
+	data.msg_type = MESSAGE_DATA;
 
 	add_arguments(&config);
 	char* output[argc];
@@ -311,8 +323,12 @@ int main(int argc, char** argv){
 			logprintf(config.log, LOG_WARNING, "Short read from event descriptor (%zd bytes)\n", bytes);
 		}
 	}
-	close(event_fd);
-	close(sock_fd);
+	if (event_fd != -1) {
+		close(event_fd);
+	}
+	if (sock_fd != -1) {
+		close(sock_fd);
+	}
 
 	return 0;
 }

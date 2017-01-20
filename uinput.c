@@ -100,7 +100,7 @@ bool create_device(LOGGER log, gamepad_client* client, struct device_meta* meta)
 }
 
 bool cleanup_device(LOGGER log, gamepad_client* client) {
-	if (!client->ev_fd) {
+	if (client->ev_fd < 0) {
 		return true;
 	}
 	int ret = ioctl(client->ev_fd, UI_DEV_DESTROY);
@@ -110,6 +110,12 @@ bool cleanup_device(LOGGER log, gamepad_client* client) {
 		return false;
 	}
 	close(client->ev_fd);
+	client->ev_fd =  -1;
+
+	if (client->meta.name) {
+		free(client->meta.name);
+		client->meta.name = NULL;
+	}
 
 	return true;
 }

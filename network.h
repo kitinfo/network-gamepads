@@ -15,22 +15,26 @@ bool send_message(LOGGER log, int sock_fd, void* data, unsigned len) {
 	ssize_t bytes = len;
 	ssize_t status = 0;
 
+	logprintf(log, LOG_DEBUG, "sending data: %d bytes\n", len);
 	while (bytes > 0) {
-		status = send(sock_fd, data, len, MSG_NOSIGNAL);
+		//status = send(sock_fd, data, len, MSG_NOSIGNAL);
+		status = send(sock_fd, data, bytes, 0);
 
 		if (status < 0) {
 			logprintf(log, LOG_ERROR, "Cannot send data: %s", strerror(errno));
 			return false;
 		}
+		logprintf(log, LOG_DEBUG, "%d bytes sended\n", status);
 
 		bytes -= status;
+		data += status;
 	}
 
 
 	return true;
 }
 
-ssize_t recv_message(LOGGER log, int sock_fd, char buf[], unsigned len, char oldbuf[], unsigned oldlen) {
+ssize_t recv_message(LOGGER log, int sock_fd, uint8_t buf[], unsigned len, uint8_t oldbuf[], unsigned oldlen) {
 	ssize_t bytes = 0;
 	ssize_t status = 0;
 	ssize_t length_needed = -1;
@@ -56,6 +60,8 @@ ssize_t recv_message(LOGGER log, int sock_fd, char buf[], unsigned len, char old
 		}
 	}
 
+	logprintf(log, LOG_DEBUG, "Trying to recv a message.\n");
+
 	while (length_needed < 1 || bytes < length_needed) {
 
 		status = recv(sock_fd, buf + bytes, len - bytes, 0);
@@ -65,11 +71,18 @@ ssize_t recv_message(LOGGER log, int sock_fd, char buf[], unsigned len, char old
 			return -1;
 		}
 
-		if (status > 0 && length_needed == 0) {
+		if (status == 0) {
+			logprintf(log, LOG_ERROR, "Server closed connection.\n");
+			return -1;
+		}
+
+		logprintf(log, LOG_DEBUG, "%d bytes received.\n", status);
+
+		if (status > 0 && length_needed < 1) {
 			length_needed = get_size_from_command(buf, status);
 
 			if (length_needed < 0) {
-				logprintf(log, LOG_ERROR, "Unkown message type %d.\n", buf[0]);
+				logprintf(log, LOG_ERROR, "Unkown message type 0x%.2x\n", buf[0]);
 				return -1;
 			}
 

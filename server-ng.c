@@ -39,7 +39,7 @@ int client_close(LOGGER log, gamepad_client* client, bool cleanup){
 		close(client->fd);
 		client->fd = -1;
 	}
-	client->passthru = false;
+	client->last_ret = 0;
 	client->scan_offset = 0;
 	return 0;
 }
@@ -76,328 +76,109 @@ bool create_node(LOGGER log, gamepad_client* client, struct device_meta* meta) {
 	return true;
 }
 
-bool set_abs_value_for(char* token, int code, struct device_meta* meta) {
-	int len = strlen(token);
-	if (!strncmp(token, "MIN", 3) && len > 4) {
-		meta->absmin[code] = strtoul(token + 4, NULL, 10);
-	} else if (!strncmp(token, "MAX", 3) && len > 4) {
-		meta->absmax[code] = strtoul(token + 4, NULL, 10);
-	} else if (!strncmp(token, "FLAT", 4) && len > 5) {
-		meta->absflat[code] = strtoul(token + 5, NULL, 10);
-	} else if (!strncmp(token, "FUZZ", 4) && len > 5) {
-		meta->absfuzz[code] = strtoul(token + 5, NULL, 10);
-	} else {
-		return false;
-	}
-	return true;
-}
-
-bool set_abs_value(char* token, struct device_meta* meta) {
-	int len = strlen(token);
-	int code = -1;
-	if (!strncmp(token, "X_", 2) && len > 2) {
-		code = ABS_X;
-		token += 2;
-	} else if (!strncmp(token, "Y_", 2) && len > 2) {
-		code = ABS_Y;
-		token += 2;
-	} else if (!strncmp(token , "Z_", 2) && len > 2) {
-		code = ABS_Z;
-		token += 2;
-	} else if (!strncmp(token , "RX_", 3) && len > 3) {
-		code = ABS_RX;
-		token += 3;
-	} else if (!strncmp(token , "RY_", 3) && len > 3) {
-		code = ABS_RY;
-		token += 3;
-	} else if (!strncmp(token , "RZ_", 3) && len > 3) {
-		code = ABS_RZ;
-		token += 3;
-	} else if (!strncmp(token , "HAT0X_", 6) && len > 6) {
-		code = ABS_HAT0X;
-		token += 6;
-	} else if (!strncmp(token , "HAT0Y_", 6) && len > 6) {
-		code = ABS_HAT0Y;
-		token += 6;
-	} else {
-		return false;
-	}
-
-	return set_abs_value_for(token, code, meta);
-}
-/*
-bool handle_hello(Config* config, gamepad_client* client) {
-	char* token = strtok((char*) client->input_buffer, "\n");
-	char* endptr;
-	// help for device creation
-	struct input_id id = {
-		.vendor = 0x0000,
-		.product = 0x0000,
-		.version = 0x0001,
-		.bustype = 0x0011
-	};
-	struct device_meta meta = {
-		.id = id,
-		.devtype = DEV_TYPE_UNKOWN,
-		.name = "",
-		.absmax = {0},
-		.absmin = {0},
-		.absflat = {0},
-		.absfuzz = {0}
-	};
-
-	init_abs_info(&meta);
-
-	while(token != NULL && strlen(token) > 0) {
-
-		// hello followed by the protocol version
-		// HELLO <version>
-		if (!strncmp(token, "HELLO ", 6)) {
-			if (strcmp(token + 6, PROTOCOL_VERSION)) {
-				logprintf(config->log, LOG_INFO, "Disconnecting client with invalid protocol version %s\n", token);
-				send_message(client->fd, "400 Protocol version mismatch\n");
-				return false;
-			}
-		} else if (!strncmp(token, "ABS_", 4) && strlen(token) > 4) {
-			if (!set_abs_value(token + 4, &meta)) {
-				logprintf(config->log, LOG_INFO, "Cannot parse ABS_: %s\n", token);
-				send_message(client->fd, "400 Cannot parse ABS value\n");
-				return false;
-			}
-		// vendor id of the device
-		// VENDOR 0xXXXX
-		} else if (!strncmp(token, "VENDOR ", 7)) {
-			meta.id.vendor = strtol(token + 7, &endptr, 16);
-			if (token + 7 == endptr) {
-				logprintf(config->log, LOG_INFO, "vendor_id was not a valid number (%s).\n", token + 7);
-				send_message(client->fd, "400 Cannot parse vendor id\n");
-				return false;
-			}
-		// product id of the device
-		// PRODUCT 0xXXXX
-		} else if (!strncmp(token, "PRODUCT ", 8)) {
-			meta.id.product = strtol(token + 8, &endptr, 16);
-			if (token + 7 == endptr) {
-				logprintf(config->log, LOG_INFO, "product_id was not a valid number (%s).\n", token + 8);
-				send_message(client->fd, "400 Cannot parse product id\n");
-				return false;
-			}
-		// bus type of the device
-		// BUSTYPE 0xXXXX
-		} else if (!strncmp(token, "BUSTYPE ", 8)) {
-			meta.id.bustype = strtol(token + 8, &endptr, 16);
-			if (token + 7 == endptr) {
-				logprintf(config->log, LOG_INFO, "bustype was not a valid number (%s).\n", token + 8);
-				send_message(client->fd, "400 Cannot parse bustype\n");
-				return false;
-			}
-		// version of the device
-		// VERSION 0xXXXX
-		} else if (!strncmp(token, "VERSION ", 8)) {
-			meta.id.version = strtol(token + 8, &endptr, 16);
-			if (token + 7 == endptr) {
-				logprintf(config->log, LOG_INFO, "version was not a valid number (%s).\n", token + 8);
-				send_message(client->fd, "400 Cannot parse device version\n");
-				return false;
-			}
-
-		// devtype of the device
-		// for mapping see DEV_TYPE
-		// DEVTYPE <number>
-		} else if (!strncmp(token, "DEVTYPE ", 8)) {
-			meta.devtype = strtol(token + 8, &endptr, 10);
-			if (token + 7 == endptr) {
-				logprintf(config->log, LOG_INFO, "devtype was not a valid number (%s).\n", token + 8);
-				send_message(client->fd, "400 Cannot parse device type\n");
-				return false;
-			}
-		// name of the device
-		// NAME <name>
-		} else if (!strncmp(token, "NAME ", 5)) {
-			meta.name = token + 5;
-		// password for this server
-		// PASSWORD <password>
-		} else if (!strncmp(token, "PASSWORD ", 9)) {
-			if (strcmp(token + 9, config->password)) {
-				logprintf(config->log, LOG_INFO, "Disconnecting client with invalid access token\n");
-				send_message(client->fd, "401 Incorrect password or token\n");
-				return false;
-			}
-		} else {
-			logprintf(config->log, LOG_INFO, "Unkown command: %s\n", token);
-			send_message(client->fd, "400 Unkown command\n");
-			return false;
-		}
-
-		token = strtok(NULL, "\n");
-	}
-
-	return create_node(config->log, client, &meta);
-}
-*/
 bool client_hello(Config* config, gamepad_client* client) {
-	uint8_t ret;
+	uint8_t ret = 0;
 
-	HelloMessage msg = {0};
-	if (client->bytes_available < sizeof(msg)) {
+	if (client->bytes_available < sizeof(HelloMessage)) {
+		logprintf(config->log, LOG_DEBUG, "not enough data");
 		return true;
 	}
 
-	memcpy(&msg, client->input_buffer, sizeof(msg));
+	HelloMessage* msg = (HelloMessage*) client->input_buffer;
 
-	if (msg.msg_type != MESSAGE_HELLO) {
-		ret = MESSAGE_INVALID_COMMAND;
+	if (msg->msg_type != MESSAGE_HELLO) {
+		logprintf(config->log, LOG_WARNING, "MESSAGE_INVALID: Cannot handle MESSAGE_HANDLE here.\n");
+		ret = MESSAGE_INVALID;
 		send_message(config->log, client->fd, &ret, 1);
 		close(client->fd);
 		client->fd = -1;
 		return false;
 	}
 
-	if (msg.version != BINARY_PROTOCOL_VERSION) {
+	if (msg->version != BINARY_PROTOCOL_VERSION) {
+		logprintf(config->log, LOG_DEBUG, "version mismatch.\n");
 		ret = MESSAGE_VERSION_MISMATCH;
 		send_message(config->log, client->fd, &ret, 1);
 		close(client->fd);
 		client->fd = -1;
+		return false;
 	}
 
-	if (msg.slot > 0) {
-		if (msg.slot > MAX_CLIENTS) {
-			ret = MESSAGE_CLIENT_SLOT_TOO_HIGH;
-		} else if (clients[msg.slot].fd != -1) {
+	logprintf(config->log, LOG_DEBUG, "slot requested: %d\n", msg->slot);
+	if (msg->slot > 0) {
+		if (msg->slot - 1 > MAX_CLIENTS) {
+			ret = MESSAGE_INVALID_CLIENT_SLOT;
+			logprintf(config->log, LOG_WARNING, "invalid client slot: %d\n", msg->slot);
+		} else if (clients[msg->slot - 1].fd > 0) {
 			ret = MESSAGE_CLIENT_SLOT_IN_USE;
+			logprintf(config->log, LOG_WARNING, "client slot in use: %d\n", msg->slot);
 		}
-		send_message(config->log, client->fd, &ret, 1);
-		close(client->fd);
-		client->fd = -1;
+
+		if (ret > 0) {
+			send_message(config->log, client->fd, &ret, 1);
+			close(client->fd);
+			client->fd = -1;
+			return false;
+		}
 	} else {
 		int i;
 
 		// check for free slot with no ev_fd
 		for (i = 0; i < MAX_CLIENTS; i++) {
-			if (clients[i].fd == -1 && clients[i].ev_fd == -1) {
-				msg.slot = i;
+			if (clients[i].fd < 0 && clients[i].ev_fd < 0) {
+				msg->slot = i + 1;
 				break;
 			}
 		}
 
 		// check for free slot with ev_fd device and close the device
-		if (msg.slot == 0) {
+		if (msg->slot == 0) {
 			for (i = 0; i < MAX_CLIENTS; i++) {
-				if (clients[i].fd == -1) {
+				if (clients[i].fd < 0) {
+					logprintf(config->log, LOG_INFO, "Free device\n");
 					cleanup_device(config->log, clients + i);
-					msg.slot = i;
+					msg->slot = i + 1;
 					break;
 				}
 			}
 		}
+
+		// client slots exhausted
+		if (msg->slot == 0) {
+			ret = MESSAGE_CLIENT_SLOTS_EXHAUSTED;
+			send_message(config->log, client->fd, &ret, 1);
+			close(client->fd);
+			client->fd = -1;
+			return false;
+		}
 	}
 	if (strlen(config->password) > 0) {
 		ret = MESSAGE_PASSWORD_REQUIRED;
-	} else if (clients[msg.slot].ev_fd == -1) {
+	} else if (clients[msg->slot - 1].ev_fd == -1) {
 		ret = MESSAGE_SETUP_REQUIRED;
 	} else {
-		clients[msg.slot].passthru = true;
 		ret = MESSAGE_SUCCESS;
 	}
 
 	if (!send_message(config->log, client->fd, &ret, 1)) {
 		close(client->fd);
 		client->fd = -1;
+		return false;
 	}
-	clients[msg.slot].fd = client->fd;
-	clients[msg.slot].scan_offset = 0;
-	clients[msg.slot].bytes_available = 0;
+
+	logprintf(config->log, LOG_INFO, "hello complete\n");
+	clients[msg->slot - 1].fd = client->fd;
+	clients[msg->slot - 1].scan_offset = 0;
+	clients[msg->slot - 1].bytes_available = 0;
+	memset(clients[msg->slot - 1].input_buffer, 0, INPUT_BUFFER_SIZE);
 	client->bytes_available = 0;
 	client->scan_offset = 0;
 	client->fd = -1;
-	clients[msg.slot].last_ret = ret;
+	clients[msg->slot - 1].last_ret = ret;
 
 	return true;
 }
-/*
-int client_data(Config* config, gamepad_client* client){
-	ssize_t bytes;
-	size_t u;
-	struct input_event* event = (struct input_event*) client->input_buffer;
 
-	bytes = recv(client->fd, client->input_buffer + client->scan_offset, sizeof(client->input_buffer) - client->scan_offset, 0);
-
-	//check if closed
-	if(bytes < 0){
-		logprintf(config->log, LOG_ERROR, "Error on recviece: %s\n", strerror(errno));
-		return client_close(config->log, client, false);
-	}
-	else if(bytes == 0){
-		return client_close(config->log, client, false);
-	}
-
-	client->scan_offset += bytes;
-
-	//check for overfull buffer
-	if(sizeof(client->input_buffer) - client->scan_offset < 10){
-		logprintf(config->log, LOG_WARNING, "Disconnecting spammy client\n");
-		return client_close(config->log, client, false);
-	}
-
-	if(!client->passthru){
-		//protocol negotiation
-		if(client->scan_offset >= strlen("HELLO ")){
-			//check for message end
-			for(u = 0; u < client->scan_offset && client->input_buffer[u]; u++){
-			}
-			if(u < client->scan_offset){
-				if(!strncmp((char*) client->input_buffer, "HELLO ", 6)) {
-					if (!handle_hello(config, client)) {
-						return client_close(config->log, client, true);
-					}
-				} else if (!strncmp((char*) client->input_buffer, "CONTINUE ", 9)) {
-					if(strcmp((char*) client->input_buffer + 9, client->token)){
-						logprintf(config->log, LOG_INFO, "Disconnecting client with invalid access token\n");
-						send(client->fd, "401 Incorrect password or token\0", 32, 0);
-						return client_close(config->log, NULL, true);
-					}
-				} else {
-						logprintf(config->log, LOG_INFO, "Disconnecting client with invalid access token\n");
-						send(client->fd, "401 Incorrect password or token\0", 32, 0);
-						return client_close(config->log, client, true);
-				}
-				//update offset
-				client->scan_offset -= (u + 1);
-				//copy back
-				memmove(client->input_buffer, client->input_buffer + u + 1, client->scan_offset);
-				//enable passthru
-				client->passthru = true;
-				//notify client
-				send(client->fd, "200 ", 4, 0);
-				send(client->fd, client->token, strlen(client->token), 0);
-				send(client->fd, "\n", 1, 0);
-				logprintf(config->log, LOG_INFO, "Client passthrough enabled with %zu bytes of data left\n", client->scan_offset);
-				return true;
-
-			} else {
-				logprintf(config->log, LOG_ERROR, "Disconnecting non-conforming client\n");
-				send(client->fd, "500 Unknown greeting\0", 21, 0);
-				return client_close(config->log, client, true);
-			}
-		}
-	}
-	//handle message
-	else{
-		//if complete message, push to node
-		while(client->scan_offset >= sizeof(struct input_event)){
-			//send message
-			write(client->ev_fd, event, sizeof(struct input_event));
-			logprintf(config->log, LOG_DEBUG, "Writing event: client:%zu, type:%d, code:%d, value:%d\n", client - clients, event->type, event->code, event->value);
-			//update offset
-			client->scan_offset -= sizeof(struct input_event);
-			//copy back
-			memmove(client->input_buffer, client->input_buffer + sizeof(struct input_event), client->scan_offset);
-		}
-	}
-
-	return 0;
-}
-*/
 int usage(int argc, char** argv, Config* config) {
 	printf("%s usage:\n"
 			"%s [<options>]\n"
@@ -420,26 +201,231 @@ bool add_arguments(Config* config) {
 	return true;
 }
 
-int client_data(Config* config, gamepad_client* client) {
+int handle_password(Config* config, gamepad_client* client, PasswordMessage* msg) {
 
-	return 0;
+	logprintf(config->log, LOG_DEBUG, "handle password\n");
+
+	if (client->last_ret != MESSAGE_PASSWORD_REQUIRED) {
+		logprintf(config->log, LOG_WARNING, "MESSAGE_INVALID: PasswordMessage must be send in PASSWORD_REQUIRED state.\n");
+		return sizeof(PasswordMessage) + msg->length;
+	}
+
+	uint8_t message;
+
+	if (strncmp(config->password, msg->password, msg->length)) {
+		logprintf(config->log, LOG_WARNING, "INVALID_PASSWORD\n");
+		message = MESSAGE_INVALID_PASSWORD;
+	} else {
+		if (client->ev_fd < 0) {
+			message = MESSAGE_SETUP_REQUIRED;
+		} else {
+			message = MESSAGE_SUCCESS;
+		}
+	}
+
+	client->last_ret = message;
+	if (!send_message(config->log, client->fd, &message, sizeof(message))) {
+		return -1;
+	}
+
+	return sizeof(PasswordMessage) + msg->length;
+}
+
+int handle_absinfo(Config* config, gamepad_client* client, ABSInfoMessage* msg) {
+	logprintf(config->log, LOG_INFO, "Handle ABSInfo message.\n");
+	if (client->last_ret != MESSAGE_SETUP_REQUIRED) {
+		logprintf(config->log, LOG_WARNING, "MESSAGE_INVALID: ABSInfoMessage must be send in SETUP state.\n");
+		return -1;
+	}
+
+	client->meta.absmax[msg->axis] = msg->info.maximum;
+	client->meta.absmin[msg->axis] = msg->info.minimum;
+	client->meta.absfuzz[msg->axis] = msg->info.fuzz;
+	client->meta.absflat[msg->axis] = msg->info.flat;
+
+	return sizeof(ABSInfoMessage);
+}
+
+int handle_device(Config* config, gamepad_client* client, DeviceMessage* msg) {
+	logprintf(config->log, LOG_INFO, "handle device message.\n");
+
+	if (client->last_ret != MESSAGE_SETUP_REQUIRED) {
+		logprintf(config->log, LOG_WARNING, "MESSAGE_INVALID: DeviceMessage must be send in SETUP state.\n");
+		return -1;
+	}
+
+	client->meta.devtype = msg->type;
+	memcpy(&client->meta.id, &msg->ids, sizeof(struct input_id));
+	client->meta.name = malloc(msg->length);
+	memcpy(client->meta.name, msg->name, msg->length);
+
+	return sizeof(DeviceMessage) + msg->length;
+}
+
+int handle_setup_required(Config* config, gamepad_client* client, uint8_t* message) {
+	uint8_t msg;
+	if (client->last_ret != MESSAGE_SUCCESS) {
+		msg = MESSAGE_INVALID;
+		logprintf(config->log, LOG_WARNING, "MESSAGE_INVALID: SetupRequiredMessage must be send in SUCCESS state.\n");
+		return -1;
+	} else {
+		msg = MESSAGE_SETUP_REQUIRED;
+		client->last_ret = msg;
+	}
+	if (!send_message(config->log, client->fd, &msg, 1)) {
+		return -1;
+	}
+	return 1;
+}
+
+int handle_quit(Config* config, gamepad_client* client, uint8_t* msg) {
+
+	return 1;
+}
+
+int handle_setup_end(Config* config, gamepad_client* client, uint8_t* msg, uint8_t slot) {
+	logprintf(config->log, LOG_DEBUG, "handle setup end\n");
+	uint8_t message;
+	if (client->last_ret != MESSAGE_SETUP_REQUIRED) {
+		message = MESSAGE_INVALID;
+		logprintf(config->log, LOG_WARNING, "MESSAGE_INVALID: SetupEndMessage must be send in SETUP state.\n");
+		send_message(config->log, client->fd, &message, sizeof(message));
+		return -1;
+	} else {
+		if (!create_device(config->log, client, &client->meta)) {
+			return -1;
+		}
+		SuccessMessage message = {
+			.msg_type = MESSAGE_SUCCESS,
+			.slot = slot + 1
+		};
+		client->last_ret = MESSAGE_SUCCESS;
+
+		if (!send_message(config->log, client->fd, &message, sizeof(message))) {
+			return -1;
+		}
+	}
+
+	return 1;
+}
+
+
+int handle_data(Config* config, gamepad_client* client, DataMessage* msg) {
+
+	if (client->last_ret != MESSAGE_SUCCESS) {
+		logprintf(config->log, LOG_WARNING, "MESSAGE_INVALID: DataMessage must be send in SUCCESS state.\n");
+		return sizeof(DataMessage);
+	}
+
+	logprintf(config->log, LOG_DEBUG, "Type: 0x%.2x, code: 0x%.2x, value: 0x%.2x\n", msg->event.type, msg->event.code, msg->event.value);
+
+	ssize_t bytes = write(client->fd, &msg->event, sizeof(struct input_event));
+	if (bytes < 0) {
+		logprintf(config->log, LOG_ERROR, "Cannot write to device: %s\n", strerror(errno));
+		return -1;
+	}
+
+	return sizeof(DataMessage);
+}
+
+bool client_data(Config* config, gamepad_client* client, uint8_t slot) {
+
+	ssize_t bytes;
+	uint8_t* msg;
+	int ret;
+	while (client->bytes_available > 0) {
+		msg = client->input_buffer + client->scan_offset;
+
+		bytes = get_size_from_command(msg, client->bytes_available);
+
+		if (bytes < 0){
+			logprintf(config->log, LOG_WARNING, "unkown message: 0x%.2x.\n", msg[0]);
+			return false;
+		}
+
+		// we need additional bytes
+		if (client->bytes_available < bytes) {
+			logprintf(config->log, LOG_DEBUG, "additional bytes...\n");
+			return true;
+		}
+
+		switch (msg[0]) {
+			case MESSAGE_PASSWORD:
+				ret = handle_password(config, client, (PasswordMessage*) msg);
+				break;
+			case MESSAGE_ABSINFO:
+				ret = handle_absinfo(config, client, (ABSInfoMessage*) msg);
+				break;
+			case MESSAGE_DEVICE:
+				ret = handle_device(config, client, (DeviceMessage*) msg);
+				break;
+			case MESSAGE_SETUP_REQUIRED:
+				ret = handle_setup_required(config, client, msg);
+				break;
+			case MESSAGE_QUIT:
+				ret = handle_quit(config, client, msg);
+				break;
+			case MESSAGE_SETUP_END:
+				ret = handle_setup_end(config, client, msg, slot);
+				break;
+			case MESSAGE_DATA:
+				ret = handle_data(config, client, (DataMessage*) msg);
+				break;
+			default:
+				logprintf(config->log, LOG_ERROR, "Unkown message: 0x%.2x\n", msg[0]);
+				ret = -1;
+				break;
+		}
+
+		// error in handling message
+		if (ret < 0) {
+			close(client->fd);
+			client->fd = -1;
+			return false;
+		}
+
+		// update
+		if (ret > 0) {
+			client->scan_offset += ret;
+			client->bytes_available -= ret;
+			logprintf(config->log, LOG_DEBUG, "Update offsets to (%d, %d).\n", client->scan_offset, client->bytes_available);
+		}
+	}
+	return true;
 }
 
 bool recv_data(Config* config, gamepad_client* client) {
+	logprintf(config->log, LOG_DEBUG, "move %d bytes.\n", client->bytes_available);
 	memmove(client->input_buffer, client->input_buffer + client->scan_offset, client->bytes_available);
 
 	ssize_t bytes;
 
-	bytes = recv(client->fd, client->input_buffer + client->bytes_available, sizeof(client->input_buffer) - client->bytes_available, 0);
+	bytes = recv(client->fd, client->input_buffer + client->bytes_available, INPUT_BUFFER_SIZE - client->bytes_available, 0);
 
+	// cannot receive data
 	if (bytes < 0) {
+		logprintf(config->log, LOG_ERROR, "Cannot recveice data from socket.\n");
 		return false;
 	}
+
+	if (bytes == 0) {
+		logprintf(config->log, LOG_ERROR, "Client closes connection.\n");
+		return false;
+	}
+	logprintf(config->log, LOG_DEBUG, "%d bytes received\n", bytes);
 
 	client->bytes_available += bytes;
 	client->scan_offset = 0;
 
 	return true;
+}
+
+void init_client(gamepad_client* client) {
+	client->fd = -1;
+	client->ev_fd = -1;
+
+	client->scan_offset = 0;
+	client->bytes_available = 0;
 }
 
 int main(int argc, char** argv) {
@@ -470,7 +456,7 @@ int main(int argc, char** argv) {
 	logprintf(config.log, LOG_INFO, "%s starting\nProtocol Version: %s\n", SERVER_VERSION, PROTOCOL_VERSION);
 	int listen_fd = tcp_listener(config.bindhost, config.port);
 	if(listen_fd < 0){
-		fprintf(stderr, "Failed to open listener\n");
+		logprintf(config.log, LOG_ERROR, "Failed to open listener\n");
 		return EXIT_FAILURE;
 	}
 
@@ -479,14 +465,12 @@ int main(int argc, char** argv) {
 
 	//initialize all clients to invalid sockets
 	for(u = 0; u < MAX_CLIENTS; u++){
-		clients[u].fd = -1;
-		clients[u].ev_fd = -1;
+		init_client(clients + u);
 	}
 
 	gamepad_client waiting_clients[MAX_WAITING_CLIENTS];
 	for (u = 0; u < MAX_WAITING_CLIENTS; u++) {
-		waiting_clients[u].fd = -1;
-		waiting_clients[u].ev_fd = -1;
+		init_client(waiting_clients + u);
 	}
 
 	logprintf(config.log, LOG_INFO, "Now waiting for connections on %s:%s\n", config.bindhost, config.port);
@@ -517,6 +501,7 @@ int main(int argc, char** argv) {
 			shutdown_server = 1;
 		}
 		else{
+			logprintf(config.log, LOG_DEBUG, "DATA incoming\n");
 			if(FD_ISSET(listen_fd, &readfds)){
 				logprintf(config.log, LOG_INFO, "new connection\n");
 				//handle client connection
@@ -525,23 +510,25 @@ int main(int argc, char** argv) {
 			for(u = 0; u < MAX_CLIENTS; u++){
 				if(FD_ISSET(clients[u].fd, &readfds)){
 					//handle client data
-					if (!recv_data(&config, waiting_clients + u)) {
-						close(waiting_clients[u].fd);
-						waiting_clients[u].fd = -1;
+					if (!recv_data(&config, clients + u)) {
+						close(clients[u].fd);
+						clients[u].fd = -1;
 						continue;
 					}
-					client_data(&config, clients + u);
+					client_data(&config, clients + u, u);
 				}
 			}
 
 			for (u = 0; u < MAX_WAITING_CLIENTS; u++) {
 				if (FD_ISSET(waiting_clients[u].fd, &readfds)) {
 					//handle waiting clients
-					if (recv_data(&config, waiting_clients + u)) {
+					if (!recv_data(&config, waiting_clients + u)) {
+						logprintf(config.log, LOG_ERROR, "Error in recv data.\n");
 						close(waiting_clients[u].fd);
 						waiting_clients[u].fd = -1;
 						continue;
 					}
+					logprintf(config.log, LOG_DEBUG, "handle hello\n");
 					client_hello(&config, waiting_clients + u);
 				}
 			}
