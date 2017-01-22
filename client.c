@@ -184,19 +184,34 @@ int setType(int argc, char** argv, Config* config) {
 		return -1;
 	}
 
-	return 0;
+	return 1;
 }
 
 int usage(int argc, char** argv, Config* config) {
 	printf("%s usage:\n"
 			"%s [<options>] <device>\n"
-			"    -t, --type          - type of the device (this should be set)\n"
-			"    -?, --help          - this help\n"
-			"    -v, --verbosity     - set the verbosity (from 0: ERROR to 5: DEBUG)\n"
-			"    -h, --host          - set the host\n"
-			"    -p, --port          - set the port\n",
+			"    -c, --continue <slot> - tries to continue a connection with the given slot.\n"
+			"                            The slot must be between 1 and 255.\n"
+			"    -h, --host            - set the host\n"
+			"    -?, --help            - this help\n"
+			"    -p, --port            - set the port\n",
+			"    -t, --type            - type of the device (this should be set)\n"
+			"    -v, --verbosity       - set the verbosity (from 0: ERROR to 5: DEBUG)\n"
 			config->program_name, config->program_name);
 	return -1;
+}
+
+int set_slot(int argc, char** argv, Config* config) {
+	unsigned value = strtoul(argv[1], NULL, 10);
+
+	if (value > 255 || value == 0) {
+		logprintf(config->log, LOG_ERROR, "Slot must be between 1 and 255.\n");
+		return -1;
+	}
+
+	config->slot = value;
+
+	return 1;
 }
 
 void add_arguments(Config* config) {
@@ -206,6 +221,7 @@ void add_arguments(Config* config) {
 	eargs_addArgumentString("-p", "--port", &config->port);
 	eargs_addArgumentString("-pw", "--password", &config->password);
 	eargs_addArgumentUInt("-v", "--verbosity", &config->log.verbosity);
+	eargs_addArgument("-c", "--continue", setSlot, 1);
 }
 
 int device_reopen(LOGGER log, char* file) {

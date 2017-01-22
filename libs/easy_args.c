@@ -169,10 +169,10 @@ int eargs_parseItem(int argc, char** cmds, void* config) {
 		if ((item->argShort && !strcmp(cmds[0], item->argShort)) || (item->argLong && !strcmp(cmds[0], item->argLong))) {
 			// check if enough arguments are available
 			if (argc > item->arguments) {
-				if (!eargs_action(item, argc, cmds, config)) {
+				arg = eargs_action(item, argc, cmds, config);
+				if (arg < 0) {
 					return -2;
 				}
-				arg = item->arguments;
 			} else {
 				printf("(%s,%s) needs an argument.", item->argShort,item->argLong);
 				return -2;

@@ -12,16 +12,18 @@
  * 	Callback function which will called when one of the identifiers is found.
  *	Signature must be:
  *
- * 	"int name(int argc, char* argv[])".
+ * 	"int name(int argc, char* argv[], void* userarg)".
  *
  *	Arguments:
- *		int argc => size of argv
- *		char* argv[] => arguments with argv[0] as identifier
+ *		int argc      => size of argv
+ *		char* argv[]  => arguments with argv[0] as identifier
+ *		void* config => a pointer to the structure given by the eargs_parse function.
  *
  *	Return: int
  *		The callback function should return a value less than
  *		zero when the argument is not in well formated or other
- *		things gone wrong.
+ *		things gone wrong. Otherwise this function must return
+ *		the count of arguments used.
  *
  * @param unsigned arguments
  * 	Defines how many arguments the identifier wants.
