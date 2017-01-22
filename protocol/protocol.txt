@@ -1,90 +1,114 @@
-Basic parameters
-	The length of a token or password MUST NOT exceed 64 bytes
-	The length of a single message MUST NOT exceed 1024 bytes
-	Every message MUST BE terminated by a zero byte
-	The protocol version described in this document is "2.2"
-	Server responses will always be preceded by a 3-byte status code
+== Introduction ==
 
-== Initial connection ==
+This is the first draft for the network gamepad binary protocol.
 
-After establishing the initial TCP connection to the server, the client
-initiates a HELLO request of the form
+The binary protocol is splitted into messages. Every message begins
+with a one message type byte (uint8_t). After this the data part of the
+message is followed.
 
-	HELLO <protocol_version>\n
-	VENDOR <vendor_id>\n
-	PRODUCT <product_id>\n
-	VERSION <device_version>\n
-	BUSTYPE <bustype>\n
-	DEVTYPE <devtype>\n
-	NAME <short_name>\n
-	PASSWORD <password>\n\n\0
+== Overview of message types ==
+* HELLO                  = 0x01
+* PASSWORD               = 0x02
+* ABSINFO                = 0x03
+* DEVICE                 = 0x04
+* SETUP_END              = 0x05
+* DATA                   = 0x10
+* SUCCESS                = 0xF0
+* VERSION_MISMATCH       = 0xF1
+* INVALID_PASSWORD       = 0xF2
+* INVALID_CLIENT_SLOT    = 0xF3
+* INVALID_MESSAGE        = 0xF4
+* PASSWORD_REQUIRED      = 0xF5
+* SETUP_REQUIRED         = 0xF6
+* CLIENT_SLOT_IN_USE     = 0xF7
+* CLIENT_SLOTS_EXHAUSTED = 0xF8
 
-with <protocol_version> representing the protocol version implemented by the client,
-<vendor_id> representing the vendor_id of the device,
-<product_id> representing the product_id of the device,
-<device_version> representing the version of the device,
-<bustype> representing the bustype of the device,
-<devtype> representing the device type (see device types),
-<short_name> representing a short_name of the device
-(not more then 80 characters (See UINPUT_MAX_NAME_SIZE in linux/uinput.h))
-and <password> representing a pre-configured shared password to the server.
+== Messages ==
 
-Optional there are these lines to setup the absolute inputs
-	ABS_<input>_MIN <int>\n
-	ABS_<input>_MAX <int>\n
-	ABS_<input>_FLAT <int>\n
-	ABS_<input>_FUZZ <int>\n
-with <input> is X, Y, Z, RX, RY, RZ, HAT0X, HAT0Y.
+=== Hello ===
 
-An example is in example.txt
-A missing device type line will result in the unkown device type.
+The HELLO message must be send only at the beginning of a connection.
+Its data part contains only the version of the used protocol The version is
+one byte long (uint8_t).
+The current version is 0x01.
 
-Upon successful authentication, the server replies with
+After the version byte follows a client slot byte. This byte is for selecting
+a slot on the server. If the byte is 0x00 the server selects a slot for
+client.
 
-	200 <token>\n
+If the protocol version of the server mismatches the sended version the server
+replies with the VERSION_MISMATCH reply.
 
-with <token> being a reconnection passphrase to be used when re-establishing
-a lost connection. The token will guarantee that a client is always assigned the
-same input device on the server.
+If the HELLO message is not sended at the beginning of the connection the
+server replies with INVALID_MESSAGE.
 
-After receiving the 200 message, the client is put into pass-through mode and
-may begin sending `struct input_event` binary data.
+If the client slot is already in use the server response with
+CLIENT_SLOT_IN_USE.
 
-Upon failure, the server may respond with any of
+If everything is fine the server respond with SETUP_REQUIRED or when a
+password is required PASSWORD_REQUIRED.
 
-	400 Version not matched (Server: <server>, Client: <client>)
-	401 Wrong password
-	405 No Password supplied
+Example:
 
-and terminate the connection.
+0x01 0x01 0x00
+(Message type: HELLO; Version: 0x01; Client slot: next free)
 
-== Reconnecting a client ==
-Upon losing the connection to a server, a client may reconnect and be assigned
-the same input device again by presenting the reconnection token transmitted in
-response to the initial HELLO request. To do so, the client opens a TCP
-connection and transmits
+=== PASSWORD ===
 
-	CONTINUE <version> <token>
+If the server requires a password it sends the PASSWORD_REQUIRED answer.
+After that the client must respond with the PASSWORD message.
 
-with <version> being the client protocol version and <token> the reconnection
-token.
+The message type byte is followed by a password length byte and then followed by
+the password. Because of one byte (uint8_t) the maximal length of a password is
+limited to 255 byte. The password encoding should be ascii but is not limited
+to it.
 
-Upon successful reconnection, the server answers with
+Example:
+0x02 0x04 0x48 0x45 0x4C 0x4F
+(Message type byte, length of the password is 4 byte, followed by HELO)
 
-	200 <token>\n
+If the password is incorrect the server responds with INVALID_PASSWORD and
+closes the connection.
 
-where <token> again represents a token to be used in further CONTINUE requests.
-The client is then again put in pass-through mode.
+If the password is correct the server responds with SETUP_REQUIRED or with
+SUCCESS if the client slot has already been set up. This is only the case if
+the client sends a valid client id in the HELLO message.
 
-Upon failure, the server may respond with any of the failure codes mentioned
-in the previous section, as well as
+=== DEVICE ===
 
-	406 No Token supplied
-	403 Token expired
+After getting a SETUP_REQUIRED event from the server. The client should
+respond with the DEVICE message. This message contains infos to create the
+uinput device on the server.
+It contains the following infos:
+* length (uint8_t): length of the name. The name should not be longer than
+                    UINPUT_MAX_NAME_SIZE (see linux/uinput.h)
+* type (uint8_t): device type (see "Device types" for valid values)
+* ids (struct input_id): This is a struct from linux/input.h with the vendor id,
+                         product _id, bustype and version of the device.
+* name: a char array with the name of the device.
 
-== Device types ==
-0: UNKOWN - Unkown device type
-1: MICE - a mice
-2: GAMEPAD - a gamepad device
-3: KEYBOARD - a keyboard
+The server sends no answer to this message. The server waits for the SETUP_END
+message.
 
+=== ABSINFO ===
+
+This message contains informations about an axis of an absolute device.
+The client should send this message for every axis of the device.
+
+struct {
+	uint8_t msg_type     - must be ABSINFO
+	uint8_t axis         - the corresponding axis (see linux/input.h or
+	                       linux/input-event-codes.h) for valid axis
+	struct input_absinfo - abs informations for the given axis (see
+	                       linux/input.h)
+}
+
+The service will not respond until the SETUP_END message will be send.
+
+=== SETUP_END ===
+
+The message contains only the message type byte. It must be send to leave the
+setup mode.
+
+After the message send the server can answer with SUCCESS if everything is
+fine.
