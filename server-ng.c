@@ -95,8 +95,8 @@ bool client_hello(Config* config, gamepad_client* client) {
 		return false;
 	}
 
-	if (msg->version != BINARY_PROTOCOL_VERSION) {
-		logprintf(config->log, LOG_DEBUG, "version mismatch.\n");
+	if (msg->version != PROTOCOL_VERSION) {
+		logprintf(config->log, LOG_DEBUG, "version mismatch: %.2x (client) != %.2x (server).\n", msg->version, PROTOCOL_VERSION);
 		ret = MESSAGE_VERSION_MISMATCH;
 		send_message(config->log, client->fd, &ret, 1);
 		close(client->fd);
@@ -453,7 +453,7 @@ int main(int argc, char** argv) {
 		return usage(argc, argv, &config);
 	}
 
-	logprintf(config.log, LOG_INFO, "%s starting\nProtocol Version: %s\n", SERVER_VERSION, PROTOCOL_VERSION);
+	logprintf(config.log, LOG_INFO, "%s starting\nProtocol Version: %.2x\n", SERVER_VERSION, PROTOCOL_VERSION);
 	int listen_fd = tcp_listener(config.bindhost, config.port);
 	if(listen_fd < 0){
 		logprintf(config.log, LOG_ERROR, "Failed to open listener\n");

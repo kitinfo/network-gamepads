@@ -117,37 +117,72 @@ int osc_parse(char* buffer, size_t len, char** path, unsigned* num_args, uint8_t
 }
 
 int input_negotiate(int fd, char* devname, char* password){
-	char msg_buf[MSG_MAX * 4];
-	ssize_t bytes, bytes_xfered;
-	char* offset;
+	ssize_t bytes;
 
-	bytes = snprintf(msg_buf, sizeof(msg_buf), "HELLO %s\nDEVTYPE 2\nNAME %s\nPASSWORD %s\n\n", PROTOCOL_VERSION, devname, password);
-	//ABS_X MIN 0
-	//ABS_X MAX 255
-	//FIXME unsafe send and undocumented 0 byte
-	send(fd, msg_buf, bytes + 1, 0);
+	HelloMessage hello_message = {
+		.msg_type = MESSAGE_HELLO,
+		.version = PROTOCOL_VERSION,
+		.slot = 0x00
+	};
 
-	bytes = 0;
-	do{
-		bytes_xfered = recv(fd, msg_buf + bytes, sizeof(msg_buf) - bytes, 0);
-		if(bytes_xfered <= 0){
-			perror("negotiate/recv");
-			return -1;
-		}
-		bytes += bytes_xfered;
-	}
-	while(memchr(msg_buf, '\n', bytes) == NULL);
+	send(fd, &hello_message, sizeof(hello_message), 0);
 
-	//terminate response
-	offset = memchr(msg_buf, '\n', bytes);
-	*offset = 0;
+	uint8_t buf[2] = {0};
+	bytes = recv(fd, buf, sizeof(buf), 0);
 
-	if(strtoul(msg_buf, NULL, 10) != 200){
-		fprintf(stderr, "Server reported: %s\n", msg_buf);
+	if (bytes < 1) {
+		perror("negotiate/recv");
 		return -1;
 	}
 
-	fprintf(stderr, "Reconnection token (ignored): %s\n", msg_buf + 4);
+	if (buf[0] == MESSAGE_VERSION_MISMATCH) {
+		printf("version mismatch: %.2x (client) != %.2x (server)\n", PROTOCOL_VERSION, buf[1]);
+		return -1;
+	} else if (buf[0] == MESSAGE_PASSWORD_REQUIRED) {
+		PasswordMessage* pw_msg = malloc(sizeof(PasswordMessage) + strlen(password) + 1);
+		pw_msg->msg_type = MESSAGE_PASSWORD;
+		pw_msg->length = strlen(password) + 1;
+		strncpy(pw_msg->password, password, pw_msg->length);
+
+		send(fd, pw_msg, sizeof(PasswordMessage) + pw_msg->length, 0);
+
+		bytes = recv(fd, buf, sizeof(buf), 0);
+		if (bytes < 1) {
+			perror("negotiate/recv");
+			return -1;
+		}
+
+		if (buf[0] == MESSAGE_INVALID_PASSWORD) {
+			printf("invalid password\n");
+			return -1;
+		}
+	}
+
+	if (buf[0] == MESSAGE_SETUP_REQUIRED) {
+		DeviceMessage* dev_msg = malloc(sizeof(DeviceMessage) + strlen(devname) + 1);
+		dev_msg->msg_type = MESSAGE_DEVICE;
+		dev_msg->length = strlen(devname) + 1;
+		dev_msg->type = 2;
+		memset(&dev_msg->ids, 0, sizeof(struct input_id));
+		strncpy(dev_msg->name, devname, dev_msg->length);
+
+		send(fd, dev_msg, sizeof(DeviceMessage) + dev_msg->length, 0);
+
+		uint8_t setup_end = MESSAGE_SETUP_END;
+		send(fd, &setup_end, sizeof(uint8_t), 0);
+
+		bytes = recv(fd, buf, sizeof(buf), 0);
+
+		if (bytes < 1) {
+			perror("negotiate/recv");
+			return -1;
+		}
+	}
+
+	if (buf[0] != MESSAGE_SUCCESS) {
+		printf("Not successful: %s\n", get_message_name(buf[0]));
+		return -1;
+	}
 	return 0;
 }
 
@@ -277,6 +312,7 @@ void signal_handler(int param){
 
 int osc_msg_xlate(int osc_fd, int host_fd){
 	struct input_event event;
+	uint8_t msg_data = MESSAGE_DATA;
 	char buffer[INPUT_BUFFER_SIZE];
 	ssize_t bytes;
 	size_t u, c;
@@ -306,6 +342,7 @@ int osc_msg_xlate(int osc_fd, int host_fd){
 				//FIXME might want to apply internal scaling here
 				event.value = (int)roundf(osc_param_float(data, c));
 				fprintf(stderr, "Event type:%d, code:%d, value:%d (raw %f max %f)\n", event.type, event.code, event.value, osc_param_float(data, c), osc_controls[u].channels[c].max);
+				send(host_fd, &msg_data, 1, 0);
 				send(host_fd, &event, sizeof(struct input_event), 0);
 			}
 
@@ -313,6 +350,7 @@ int osc_msg_xlate(int osc_fd, int host_fd){
 			event.type = EV_SYN;
 			event.code = SYN_REPORT;
 			event.value = 0;
+			send(host_fd, &msg_data, 1, 0);
 			send(host_fd, &event, sizeof(struct input_event), 0);
 			return 0;
 		}

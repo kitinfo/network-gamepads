@@ -2,14 +2,11 @@
 
 #include <linux/input.h>
 
-#define PROTOCOL_VERSION "2.2"
-#define BINARY_PROTOCOL_VERSION 0x01
+#define PROTOCOL_VERSION 0x01
 #define INPUT_BUFFER_SIZE 1024
 #define DEFAULT_PASSWORD "foobar"
 #define DEFAULT_HOST "::"
 #define DEFAULT_PORT "9292"
-#define TOKEN_SIZE 16
-#define MAX_STATUS_MESSAGE_SIZE 128
 
 enum MESSAGE_TYPES {
 	MESSAGE_HELLO = 0x01,
@@ -70,6 +67,45 @@ typedef struct {
 	uint8_t msg_type;
 	uint8_t slot;
 } SuccessMessage;
+
+char* get_message_name(uint8_t msg) {
+	switch(msg) {
+		case MESSAGE_HELLO:
+			return "hello";
+		case MESSAGE_PASSWORD:
+			return "password";
+		case MESSAGE_ABSINFO:
+			return "absinfo";
+		case MESSAGE_DEVICE:
+			return "device";
+		case MESSAGE_SETUP_END:
+			return "setup end";
+		case MESSAGE_DATA:
+			return "data";
+		case MESSAGE_SUCCESS:
+			return "success";
+		case MESSAGE_VERSION_MISMATCH:
+			return "version mismatch";
+		case MESSAGE_INVALID_PASSWORD:
+			return "password";
+		case MESSAGE_INVALID_CLIENT_SLOT:
+			return "invalid client slot";
+		case MESSAGE_INVALID:
+			return "invalid message";
+		case MESSAGE_PASSWORD_REQUIRED:
+			return "password required";
+		case MESSAGE_SETUP_REQUIRED:
+			return "setup required";
+		case MESSAGE_CLIENT_SLOT_IN_USE:
+			return "client slot in use";
+		case MESSAGE_CLIENT_SLOTS_EXHAUSTED:
+			return "client slots exhausted";
+		case MESSAGE_QUIT:
+			return "quit";
+		default:
+			return "unkown";
+	}
+}
 
 int get_size_from_command(uint8_t* buf, unsigned len) {
 	switch(buf[0]) {

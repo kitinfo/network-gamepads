@@ -104,7 +104,7 @@ bool init_connect(int sock_fd, int device_fd, Config* config) {
 
 	HelloMessage hello = {
 		.msg_type = 0x01,
-		.version = BINARY_PROTOCOL_VERSION,
+		.version = PROTOCOL_VERSION,
 		.slot = config->slot
 	};
 
@@ -118,11 +118,11 @@ bool init_connect(int sock_fd, int device_fd, Config* config) {
 		return false;
 	}
 
-	logprintf(config->log, LOG_DEBUG, "msg_type received: 0x%.2x\n", buf[0]);
+	logprintf(config->log, LOG_DEBUG, "msg_type received: %s\n", get_message_name(buf[0]));
 
 	// check version
 	if (buf[0] == MESSAGE_VERSION_MISMATCH) {
-		logprintf(config->log, LOG_ERROR, "Version mismatch: %d != %d", PROTOCOL_VERSION, buf[1]);
+		logprintf(config->log, LOG_ERROR, "Version mismatch: %.2x (client) != %.2x (server)\n", PROTOCOL_VERSION, buf[1]);
 		return false;
 	} else if (buf[0] == MESSAGE_PASSWORD_REQUIRED) {
 		logprintf(config->log, LOG_INFO, "password is required\n");
@@ -194,10 +194,10 @@ int usage(int argc, char** argv, Config* config) {
 			"                            The slot must be between 1 and 255.\n"
 			"    -h, --host            - set the host\n"
 			"    -?, --help            - this help\n"
-			"    -p, --port            - set the port\n",
+			"    -p, --port            - set the port\n"
 			"    -t, --type            - type of the device (this should be set)\n"
 			"    -v, --verbosity       - set the verbosity (from 0: ERROR to 5: DEBUG)\n"
-			config->program_name, config->program_name);
+			,config->program_name, config->program_name);
 	return -1;
 }
 
@@ -221,7 +221,7 @@ void add_arguments(Config* config) {
 	eargs_addArgumentString("-p", "--port", &config->port);
 	eargs_addArgumentString("-pw", "--password", &config->password);
 	eargs_addArgumentUInt("-v", "--verbosity", &config->log.verbosity);
-	eargs_addArgument("-c", "--continue", setSlot, 1);
+	eargs_addArgument("-c", "--continue", set_slot, 1);
 }
 
 int device_reopen(LOGGER log, char* file) {
@@ -272,7 +272,7 @@ int main(int argc, char** argv){
 	logprintf(config.log, LOG_INFO, "Reading input events from %s\n", output[0]);
 	event_fd = open(output[0], O_RDONLY);
 	if(event_fd < 0){
-		logprintf(config.log, LOG_ERROR, "Failed to open device\n");
+		logprintf(config.log, LOG_ERROR, "Failed to open device: %s\n", strerror(errno));
 		return EXIT_FAILURE;
 	}
 
