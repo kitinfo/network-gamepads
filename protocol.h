@@ -14,7 +14,7 @@ enum MESSAGE_TYPES {
 	MESSAGE_ABSINFO = 0x03,
 	MESSAGE_DEVICE = 0x04,
 	MESSAGE_SETUP_END = 0x05,
-	MESSAGE_DATA =  0x10,
+	MESSAGE_DATA = 0x10,
 	MESSAGE_SUCCESS = 0xF0,
 	MESSAGE_VERSION_MISMATCH = 0xF1,
 	MESSAGE_INVALID_PASSWORD = 0xF2,
@@ -27,6 +27,10 @@ enum MESSAGE_TYPES {
 	MESSAGE_QUIT = 0xF9
 };
 
+struct MessageInfo {
+	unsigned length;
+	char* name;
+};
 typedef struct {
 	uint8_t msg_type;
 	uint8_t version;
@@ -68,82 +72,39 @@ typedef struct {
 	uint8_t slot;
 } SuccessMessage;
 
+struct MessageInfo MESSAGE_TYPES_INFO[256] = {
+	[0 ... 255] = { .length = -1, .name = "unkown"},
+	[MESSAGE_HELLO] = { .length = sizeof(HelloMessage), .name = "hello"},
+	[MESSAGE_PASSWORD] = { .length = sizeof(PasswordMessage), .name = "password"},
+	[MESSAGE_ABSINFO] = {.length = sizeof(ABSInfoMessage), .name = "absinfo"},
+	[MESSAGE_DEVICE] = { .length = sizeof(DeviceMessage), .name = "device"},
+	[MESSAGE_SETUP_END] = { .length = 1, .name = "setup end"},
+	[MESSAGE_DATA] =  { .length = sizeof(DataMessage), .name = "data"},
+	[MESSAGE_SUCCESS] = { .length = sizeof(SuccessMessage), .name = "success"},
+	[MESSAGE_VERSION_MISMATCH] = { .length = sizeof(VersionMismatchMessage), .name = "version mismatch"},
+	[MESSAGE_INVALID_PASSWORD] = { .length = 1, .name = "invalid password"},
+	[MESSAGE_INVALID_CLIENT_SLOT] = { .length = 1, .name = "invalid client slot"},
+	[MESSAGE_INVALID] = { .length = 1, .name = "invalid message"},
+	[MESSAGE_PASSWORD_REQUIRED] = { .length = 1, .name = "password required"},
+	[MESSAGE_SETUP_REQUIRED] = { .length = 1, .name = "setup required"},
+	[MESSAGE_CLIENT_SLOT_IN_USE] = { .length = 1, .name = "client slot in use"},
+	[MESSAGE_CLIENT_SLOTS_EXHAUSTED] = { .length = 1, .name = "client slots exhausted"},
+	[MESSAGE_QUIT] = { .length = 1, .name = "quit"}
+};
+
+
 char* get_message_name(uint8_t msg) {
-	switch(msg) {
-		case MESSAGE_HELLO:
-			return "hello";
-		case MESSAGE_PASSWORD:
-			return "password";
-		case MESSAGE_ABSINFO:
-			return "absinfo";
-		case MESSAGE_DEVICE:
-			return "device";
-		case MESSAGE_SETUP_END:
-			return "setup end";
-		case MESSAGE_DATA:
-			return "data";
-		case MESSAGE_SUCCESS:
-			return "success";
-		case MESSAGE_VERSION_MISMATCH:
-			return "version mismatch";
-		case MESSAGE_INVALID_PASSWORD:
-			return "password";
-		case MESSAGE_INVALID_CLIENT_SLOT:
-			return "invalid client slot";
-		case MESSAGE_INVALID:
-			return "invalid message";
-		case MESSAGE_PASSWORD_REQUIRED:
-			return "password required";
-		case MESSAGE_SETUP_REQUIRED:
-			return "setup required";
-		case MESSAGE_CLIENT_SLOT_IN_USE:
-			return "client slot in use";
-		case MESSAGE_CLIENT_SLOTS_EXHAUSTED:
-			return "client slots exhausted";
-		case MESSAGE_QUIT:
-			return "quit";
-		default:
-			return "unkown";
-	}
+	return MESSAGE_TYPES_INFO[msg].name;
 }
 
 int get_size_from_command(uint8_t* buf, unsigned len) {
-	switch(buf[0]) {
-		case MESSAGE_HELLO:
-			return sizeof(HelloMessage);
-		case MESSAGE_PASSWORD:
-			if (len > 1) {
-				// 2 byte for command and length + length of the password
-				return sizeof(PasswordMessage) + buf[1];
-			} else {
-				return 0;
-			}
-		case MESSAGE_ABSINFO:
-			return sizeof(ABSInfoMessage);
-		case MESSAGE_DEVICE:
-			if (len > 1) {
-				// 3 bytes for command, length and type + sizeof(struct input_id) + length of the name
-				return sizeof(DeviceMessage) + buf[1];
-			} else {
-				return 0;
-			}
-		case MESSAGE_SUCCESS:
-			return sizeof(SuccessMessage);
-		case MESSAGE_VERSION_MISMATCH:
-			return sizeof(VersionMismatchMessage);
-		case MESSAGE_SETUP_END:
-		case MESSAGE_INVALID_PASSWORD:
-		case MESSAGE_INVALID_CLIENT_SLOT:
-		case MESSAGE_INVALID:
-		case MESSAGE_PASSWORD_REQUIRED:
-		case MESSAGE_SETUP_REQUIRED:
-		case MESSAGE_CLIENT_SLOT_IN_USE:
-		case MESSAGE_CLIENT_SLOTS_EXHAUSTED:
-		case MESSAGE_QUIT:
-			return 1;
-		case MESSAGE_DATA:
-			return sizeof(DataMessage);
-		default:
-			return -1;
+	if (buf[0] == MESSAGE_PASSWORD || buf[0] == MESSAGE_DEVICE) {
+		if (len > 1) {
+			return MESSAGE_TYPES_INFO[buf[0]].length + buf[1];
+		} else {
+			return 0;
+		}
+	} else {
+		return MESSAGE_TYPES_INFO[buf[0]].length;
 	}
 }
