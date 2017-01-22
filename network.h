@@ -17,8 +17,8 @@ bool send_message(LOGGER log, int sock_fd, void* data, unsigned len) {
 
 	logprintf(log, LOG_DEBUG, "sending data: %d bytes\n", len);
 	while (bytes > 0) {
-		//status = send(sock_fd, data, len, MSG_NOSIGNAL);
-		status = send(sock_fd, data, bytes, 0);
+		status = send(sock_fd, data, len, MSG_NOSIGNAL);
+		//status = send(sock_fd, data, bytes, 0);
 
 		if (status < 0) {
 			logprintf(log, LOG_ERROR, "Cannot send data: %s", strerror(errno));
