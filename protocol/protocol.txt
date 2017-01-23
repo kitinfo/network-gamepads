@@ -1,3 +1,17 @@
+Network gamepads protocol documentation. Version: 0x02
+
+== Security ==
+
+* Do not use this protocol to send your keyboard over the internet.
+* The connection is not secure.
+* Use it only in environments you control.
+* It has no encryption so do not send important passwords with this protocol.
+* Don't use a server password that you use on other services.
+
+If you need to send keyboard to a remote x session use something like this:
+```
+	ssh -X <server> x2x -to :0 -nomouse
+```
 == Introduction ==
 
 This is the first draft for the network gamepad binary protocol.
@@ -22,15 +36,25 @@ message is followed.
 * SETUP_REQUIRED         = 0xF6
 * CLIENT_SLOT_IN_USE     = 0xF7
 * CLIENT_SLOTS_EXHAUSTED = 0xF8
+* QUIT                   = 0xF9
+* DEVICE_NOT_ALLOWED     = 0xFA
 
 == Messages ==
 
 === Hello ===
 
+```c
+struct HelloMessage {
+	uint8_t msg_type; /* must be HELLO */
+	uint8_t version; /* must be PROTOCOL_VERSION (0x02) */
+	uint8_t slot; /* the slot. */
+}
+```
+
 The HELLO message must be send only at the beginning of a connection.
 Its data part contains only the version of the used protocol The version is
 one byte long (uint8_t).
-The current version is 0x01.
+The current version is 0x02.
 
 After the version byte follows a client slot byte. This byte is for selecting
 a slot on the server. If the byte is 0x00 the server selects a slot for
@@ -42,11 +66,18 @@ replies with the VERSION_MISMATCH reply.
 If the HELLO message is not sended at the beginning of the connection the
 server replies with INVALID_MESSAGE.
 
+If the client slot is out of range the server send the INVALID_CLIENT_SLOT
+message. The server can set the slot range but can not accept more than 255
+clients.
 If the client slot is already in use the server response with
 CLIENT_SLOT_IN_USE.
 
-If everything is fine the server respond with SETUP_REQUIRED or when a
-password is required PASSWORD_REQUIRED.
+If the client request not specific slot but all slots are exhausted then the
+server send the CLIENT_SLOTS_EXHAUSTED message.
+
+If everything is fine the server respond with SETUP_REQUIRED if a device setup
+is required or when a
+password is required PASSWORD_REQUIRED or SUCCESS if everything is set up.
 
 Example:
 
@@ -55,8 +86,17 @@ Example:
 
 === PASSWORD ===
 
+```c
+struct PasswordMessage {
+	uint8_t msg_type; /* must be PASSWORD */
+	uint8_t length; /* length of password */
+	uint8_t password; /* The password. Must be of the given length. */
+}
+```
+
 If the server requires a password it sends the PASSWORD_REQUIRED answer.
-After that the client must respond with the PASSWORD message.
+After that the client must respond with the PASSWORD message. Any other
+message results in the INVALID_MESSAGE respond.
 
 The message type byte is followed by a password length byte and then followed by
 the password. Because of one byte (uint8_t) the maximal length of a password is
@@ -76,6 +116,17 @@ the client sends a valid client id in the HELLO message.
 
 === DEVICE ===
 
+```c
+struct DeviceMessage {
+	uint8_t msg_type; /* must be DEVICE */
+	uint8_t length; /* length of the name */
+	uint8_t type; /* see device types */
+	struct input_id ids; /* see input.h */
+	char name[]; /* must be of the given length */
+}
+
+```
+
 After getting a SETUP_REQUIRED event from the server. The client should
 respond with the DEVICE message. This message contains infos to create the
 uinput device on the server.
@@ -87,28 +138,57 @@ It contains the following infos:
                          product _id, bustype and version of the device.
 * name: a char array with the name of the device.
 
-The server sends no answer to this message. The server waits for the SETUP_END
-message.
+The server will not respond until the SETUP_END message will be send.
 
 === ABSINFO ===
+
+```c
+struct ABSInfoMessage {
+	uint8_t msg_type; /* must be ABSINFO */
+	uint8_t axis; /* must be smaller than MSG_MAX (see linux/input-event-codes.h)
+	struct input_absinfo info; /* see linux/input.h */
+}
+```
 
 This message contains informations about an axis of an absolute device.
 The client should send this message for every axis of the device.
 
-struct {
-	uint8_t msg_type     - must be ABSINFO
-	uint8_t axis         - the corresponding axis (see linux/input.h or
-	                       linux/input-event-codes.h) for valid axis
-	struct input_absinfo - abs informations for the given axis (see
-	                       linux/input.h)
-}
+The second byte in the message is the axis information. See linux/input.h for
+all available axis (ABS_*). The rest of the message is the absinfo for the
+axis. For the right implementation see linux/input.h for the corresponding
+struct.
 
-The service will not respond until the SETUP_END message will be send.
+The server will not respond until the SETUP_END message will be send.
 
 === SETUP_END ===
+
+```c
+struct SetupEndMessage {
+	uint8_t msg_type; /* must be SETUP_END */
+}
+```
 
 The message contains only the message type byte. It must be send to leave the
 setup mode.
 
 After the message send the server can answer with SUCCESS if everything is
 fine.
+
+=== DATA ===
+
+```c
+struct DataMessage {
+	uint8_t msg_type; /* must be DATA */
+	struct input_event event; /* see linux/input.h */
+}
+```
+
+This send an input event to the server.
+
+After the message type byte comes the input event. See linux/input.h for the
+informations on the input_event struct.
+IMPORTANT: The struct timeval must be of the same size as the struct timeval
+on the server (currently 16 bytes at most systems).
+
+The server responds currently only on error with INVALID_MESSAGE when the data
+message isn't sended in success state of the server.
