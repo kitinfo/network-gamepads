@@ -64,7 +64,8 @@ local msgtype = {
 	SETUP_REQUIRED         = 0xF6,
 	CLIENT_SLOT_IN_USE     = 0xF7,
 	CLIENT_SLOTS_EXHAUSTED = 0xF8,
-	QUIT                   = 0xF9
+	QUIT                   = 0xF9,
+	DEVICE_NOT_ALLOWED     = 0xFA
 }
 
 local axismap = {
