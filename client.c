@@ -103,7 +103,7 @@ bool init_connect(int sock_fd, int device_fd, Config* config) {
 	ssize_t recv_bytes;
 
 	HelloMessage hello = {
-		.msg_type = 0x01,
+		.msg_type = MESSAGE_HELLO,
 		.version = PROTOCOL_VERSION,
 		.slot = config->slot
 	};
@@ -175,11 +175,11 @@ void quit() {
 
 int setType(int argc, char** argv, Config* config) {
 	if (!strcmp(argv[1], "mouse")) {
-		config->type = 1;
+		config->type = DEV_TYPE_MOUSE;
 	} else if (!strcmp(argv[1], "gamepad")) {
-		config->type = 2;
+		config->type = DEV_TYPE_GAMEPAD;
 	} else if (!strcmp(argv[1], "keyboard")) {
-		config->type = 3;
+		config->type = DEV_TYPE_KEYBOARD;
 	} else {
 		return -1;
 	}
@@ -328,10 +328,11 @@ int main(int argc, char** argv){
 				//check if connection is closed
 				if(errno == ECONNRESET || errno == EPIPE) {
 					if (!init_connect(sock_fd, event_fd, &config)) {
-						logprintf(config.log, LOG_ERROR, "Cannot reconnect to server.\n");
+						logprintf(config.log, LOG_ERROR, "Cannot reconnect to server: %s\n", strerror(errno));
 						break;
 					}
 				} else {
+					logprintf(config.log, LOG_ERROR, "Error in sending message: %s\n", strerror(errno));
 					break;
 				}
 			}

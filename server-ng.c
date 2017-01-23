@@ -27,13 +27,12 @@ void signal_handler(int param) {
 	shutdown_server = 1;
 }
 
-int client_close(LOGGER log, gamepad_client* client, bool cleanup){
-//	if(cleanup){
+int client_close(LOGGER log, gamepad_client* client, uint8_t slot, bool cleanup){
+	if(cleanup){
 		cleanup_device(log, client);
-//	}
-//	else{
-		logprintf(log, LOG_INFO, "Closing client connection\n");
-//	}
+	}
+
+	logprintf(log, LOG_INFO, "client %d: Closing client connection\n", slot);
 
 	if(client->fd >= 0){
 		close(client->fd);
@@ -59,35 +58,24 @@ bool client_connection(Config* config, int listener, gamepad_client waiting_queu
 		return true;
 	}
 
-	logprintf(config->log, LOG_INFO, "New client in slot %zu\n", client_ident);
+	logprintf(config->log, LOG_INFO, "New client in waiting slot %zu\n", client_ident);
 	waiting_queue[client_ident].fd = accept(listener, NULL, NULL);
 
 	return true;
 }
 
-bool create_node(LOGGER log, gamepad_client* client, struct device_meta* meta) {
-	//generate libevdev device
-	if(!create_device(log, client, meta)) {
-		logprintf(log, LOG_ERROR, "Failed to create evdev node\n");
-		//send_message(client->fd, "500 Cannot create evdev node\n");
-		return false;
-	}
-
-	return true;
-}
-
-bool client_hello(Config* config, gamepad_client* client) {
+bool client_hello(Config* config, gamepad_client* client, uint8_t slot) {
 	uint8_t ret = 0;
 
 	if (client->bytes_available < sizeof(HelloMessage)) {
-		logprintf(config->log, LOG_DEBUG, "not enough data");
+		logprintf(config->log, LOG_DEBUG, "waiting slot %d: not enough data\n", slot);
 		return true;
 	}
 
 	HelloMessage* msg = (HelloMessage*) client->input_buffer;
 
 	if (msg->msg_type != MESSAGE_HELLO) {
-		logprintf(config->log, LOG_WARNING, "MESSAGE_INVALID: Cannot handle MESSAGE_HANDLE here.\n");
+		logprintf(config->log, LOG_WARNING, "waiting slot %d: MESSAGE_INVALID: Cannot handle MESSAGE_HANDLE here.\n", slot);
 		ret = MESSAGE_INVALID;
 		send_message(config->log, client->fd, &ret, 1);
 		close(client->fd);
@@ -95,8 +83,11 @@ bool client_hello(Config* config, gamepad_client* client) {
 		return false;
 	}
 
+	// protocol version must be the same
 	if (msg->version != PROTOCOL_VERSION) {
-		logprintf(config->log, LOG_DEBUG, "version mismatch: %.2x (client) != %.2x (server).\n", msg->version, PROTOCOL_VERSION);
+		logprintf(config->log, LOG_DEBUG,
+				"waiting slot %d: version mismatch: %.2x (client) != %.2x (server).\n",
+				slot, msg->version, PROTOCOL_VERSION);
 		ret = MESSAGE_VERSION_MISMATCH;
 		send_message(config->log, client->fd, &ret, 1);
 		close(client->fd);
@@ -104,14 +95,14 @@ bool client_hello(Config* config, gamepad_client* client) {
 		return false;
 	}
 
-	logprintf(config->log, LOG_DEBUG, "slot requested: %d\n", msg->slot);
+	logprintf(config->log, LOG_DEBUG, "waiting slot %d: slot requested: %d\n", slot, msg->slot);
 	if (msg->slot > 0) {
 		if (msg->slot - 1 > MAX_CLIENTS) {
 			ret = MESSAGE_INVALID_CLIENT_SLOT;
-			logprintf(config->log, LOG_WARNING, "invalid client slot: %d\n", msg->slot);
+			logprintf(config->log, LOG_WARNING, "waiting slot %d: invalid client slot: %d\n", slot, msg->slot);
 		} else if (clients[msg->slot - 1].fd > 0) {
 			ret = MESSAGE_CLIENT_SLOT_IN_USE;
-			logprintf(config->log, LOG_WARNING, "client slot in use: %d\n", msg->slot);
+			logprintf(config->log, LOG_WARNING, "waiting slot %d: client slot in use: %d\n", slot, msg->slot);
 		}
 
 		if (ret > 0) {
@@ -135,7 +126,7 @@ bool client_hello(Config* config, gamepad_client* client) {
 		if (msg->slot == 0) {
 			for (i = 0; i < MAX_CLIENTS; i++) {
 				if (clients[i].fd < 0) {
-					logprintf(config->log, LOG_INFO, "Free device\n");
+					logprintf(config->log, LOG_INFO, "waiting slot %d: Free old device slot %d\n", slot, i);
 					cleanup_device(config->log, clients + i);
 					msg->slot = i + 1;
 					break;
@@ -152,8 +143,11 @@ bool client_hello(Config* config, gamepad_client* client) {
 			return false;
 		}
 	}
+
+	// check if the server has set a password
 	if (strlen(config->password) > 0) {
 		ret = MESSAGE_PASSWORD_REQUIRED;
+	// check if the device is already set up
 	} else if (clients[msg->slot - 1].ev_fd == -1) {
 		ret = MESSAGE_SETUP_REQUIRED;
 	} else {
@@ -166,7 +160,8 @@ bool client_hello(Config* config, gamepad_client* client) {
 		return false;
 	}
 
-	logprintf(config->log, LOG_INFO, "hello complete\n");
+	// move the client data to the right slot
+	logprintf(config->log, LOG_INFO, "waiting slot: %d: hello complete\n", slot);
 	clients[msg->slot - 1].fd = client->fd;
 	clients[msg->slot - 1].scan_offset = 0;
 	clients[msg->slot - 1].bytes_available = 0;
@@ -182,17 +177,37 @@ bool client_hello(Config* config, gamepad_client* client) {
 int usage(int argc, char** argv, Config* config) {
 	printf("%s usage:\n"
 			"%s [<options>]\n"
+			"    -b,  --bind <bind>          - sets the bind address\n"
+			"    -l,  --limit <type>         - limit device types to the given one\n"
+			"                                  type is mouse, keyboard or gamepad\n"
 			"    -h,  --help                 - show this help\n"
 			"    -p,  --port <port>          - sets the port\n"
-			"    -b,  --bind <bind>          - sets the bind address\n"
-			"    -pw, --password <password>  - sets the password\n",
-			config->program_name, config->program_name);
+			"    -pw, --password <password>  - sets the password\n"
+			"    -v,  --verbosity <level>    - sets the level of verbosity (0: ERROR - 4: ALL_IO)\n"
+			, config->program_name, config->program_name);
 
 	return -1;
 }
 
+int set_limit(int argc, char** argv, Config* config) {
+	if (!strcmp(argv[1], "mouse")) {
+		config->limit = DEV_TYPE_MOUSE;
+	} else if (!strcmp(argv[1], "keyboard")) {
+		config->limit = DEV_TYPE_KEYBOARD;
+	} else if (!strcmp(argv[1], "gamepad")) {
+		config->limit = DEV_TYPE_GAMEPAD;
+	} else {
+		logprintf(config->log, LOG_ERROR,
+				"unkown device type %s. Valid ones are: gamepad, keyboard, mouse\n", argv[1]);
+		return -1;
+	}
+
+	return 1;
+}
+
 bool add_arguments(Config* config) {
 	eargs_addArgument("-h", "--help", usage, 0);
+	eargs_addArgument("-l", "--limit", set_limit, 1);
 	eargs_addArgumentString("-p", "--port", &config->port);
 	eargs_addArgumentString("-b", "--bind", &config->bindhost);
 	eargs_addArgumentString("-pw", "--password", &config->password);
@@ -201,19 +216,21 @@ bool add_arguments(Config* config) {
 	return true;
 }
 
-int handle_password(Config* config, gamepad_client* client, PasswordMessage* msg) {
+// handles a password message. Returns the bytes used or -1 on failure.
+int handle_password(Config* config, gamepad_client* client, PasswordMessage* msg, uint8_t slot) {
 
-	logprintf(config->log, LOG_DEBUG, "handle password\n");
+	logprintf(config->log, LOG_DEBUG, "client %d: handle password\n", slot);
 
 	if (client->last_ret != MESSAGE_PASSWORD_REQUIRED) {
-		logprintf(config->log, LOG_WARNING, "MESSAGE_INVALID: PasswordMessage must be send in PASSWORD_REQUIRED state.\n");
+		logprintf(config->log, LOG_WARNING,
+				"client %d: MESSAGE_INVALID: PasswordMessage must be send in PASSWORD_REQUIRED state.\n", slot);
 		return sizeof(PasswordMessage) + msg->length;
 	}
 
 	uint8_t message;
 
 	if (strncmp(config->password, msg->password, msg->length)) {
-		logprintf(config->log, LOG_WARNING, "INVALID_PASSWORD\n");
+		logprintf(config->log, LOG_WARNING, "client %d: INVALID_PASSWORD\n", slot);
 		message = MESSAGE_INVALID_PASSWORD;
 	} else {
 		if (client->ev_fd < 0) {
@@ -231,10 +248,12 @@ int handle_password(Config* config, gamepad_client* client, PasswordMessage* msg
 	return sizeof(PasswordMessage) + msg->length;
 }
 
-int handle_absinfo(Config* config, gamepad_client* client, ABSInfoMessage* msg) {
-	logprintf(config->log, LOG_INFO, "Handle ABSInfo message.\n");
+// Handles a absinfo message. Returns the bytes used or -1 on failure.
+int handle_absinfo(Config* config, gamepad_client* client, ABSInfoMessage* msg, uint8_t slot) {
+	logprintf(config->log, LOG_INFO, "client %d: Handle ABSInfo message.\n", slot);
 	if (client->last_ret != MESSAGE_SETUP_REQUIRED) {
-		logprintf(config->log, LOG_WARNING, "MESSAGE_INVALID: ABSInfoMessage must be send in SETUP state.\n");
+		logprintf(config->log, LOG_WARNING,
+				"client %d: MESSAGE_INVALID: ABSInfoMessage must be send in SETUP state.\n", slot);
 		return -1;
 	}
 
@@ -246,11 +265,24 @@ int handle_absinfo(Config* config, gamepad_client* client, ABSInfoMessage* msg) 
 	return sizeof(ABSInfoMessage);
 }
 
-int handle_device(Config* config, gamepad_client* client, DeviceMessage* msg) {
-	logprintf(config->log, LOG_INFO, "handle device message.\n");
+// handles the device message. Returns the bytes used or -1 on failure.
+int handle_device(Config* config, gamepad_client* client, DeviceMessage* msg, uint8_t slot) {
+	logprintf(config->log, LOG_INFO, "client %d: handle device message.\n", slot);
 
+	// the device message may only be send in setup required state.
 	if (client->last_ret != MESSAGE_SETUP_REQUIRED) {
-		logprintf(config->log, LOG_WARNING, "MESSAGE_INVALID: DeviceMessage must be send in SETUP state.\n");
+		logprintf(config->log, LOG_WARNING,
+				"client %d: MESSAGE_INVALID: DeviceMessage must be send in SETUP state.\n", slot);
+		return -1;
+	}
+
+	// check for device limitations
+	if (config->limit > 0 && msg->type != config->limit) {
+		logprintf(config->log, LOG_WARNING, "client %d: Device type %d is not enabled\n", msg->type);
+
+		uint8_t message = MESSAGE_DEVICE_NOT_ALLOWED;
+
+		send_message(config->log, client->fd, &message, sizeof(message));
 		return -1;
 	}
 
@@ -262,11 +294,15 @@ int handle_device(Config* config, gamepad_client* client, DeviceMessage* msg) {
 	return sizeof(DeviceMessage) + msg->length;
 }
 
-int handle_setup_required(Config* config, gamepad_client* client, uint8_t* message) {
+// handles the setup required message. Returns the bytes used or -1 on failure.
+int handle_setup_required(Config* config, gamepad_client* client, uint8_t* message, uint8_t slot) {
 	uint8_t msg;
+
+	// setup required may only be send in success state.
 	if (client->last_ret != MESSAGE_SUCCESS) {
 		msg = MESSAGE_INVALID;
-		logprintf(config->log, LOG_WARNING, "MESSAGE_INVALID: SetupRequiredMessage must be send in SUCCESS state.\n");
+		logprintf(config->log, LOG_WARNING,
+				"client %d: MESSAGE_INVALID: SetupRequiredMessage must be send in SUCCESS state.\n", slot);
 		return -1;
 	} else {
 		msg = MESSAGE_SETUP_REQUIRED;
@@ -278,17 +314,21 @@ int handle_setup_required(Config* config, gamepad_client* client, uint8_t* messa
 	return 1;
 }
 
-int handle_quit(Config* config, gamepad_client* client, uint8_t* msg) {
-
+// handles the quit message. Returns the bytes used or -1 on failure.
+int handle_quit(Config* config, gamepad_client* client, uint8_t* msg, uint8_t slot) {
+	// TODO close the ev_fd
 	return 1;
 }
 
+// handles the setup end message. Returns the bytes used or -1 on failure.
 int handle_setup_end(Config* config, gamepad_client* client, uint8_t* msg, uint8_t slot) {
-	logprintf(config->log, LOG_DEBUG, "handle setup end\n");
+	logprintf(config->log, LOG_DEBUG, "client %d: handle setup end\n", slot);
 	uint8_t message;
+	// setup end message may only be send in setup required state.
 	if (client->last_ret != MESSAGE_SETUP_REQUIRED) {
 		message = MESSAGE_INVALID;
-		logprintf(config->log, LOG_WARNING, "MESSAGE_INVALID: SetupEndMessage must be send in SETUP state.\n");
+		logprintf(config->log, LOG_WARNING,
+				"client %d: MESSAGE_INVALID: SetupEndMessage must be send in SETUP state.\n", slot);
 		send_message(config->log, client->fd, &message, sizeof(message));
 		return -1;
 	} else {
@@ -309,25 +349,28 @@ int handle_setup_end(Config* config, gamepad_client* client, uint8_t* msg, uint8
 	return 1;
 }
 
-
-int handle_data(Config* config, gamepad_client* client, DataMessage* msg) {
+// handles data messages. Returns the bytes used or -1 on failure.
+int handle_data(Config* config, gamepad_client* client, DataMessage* msg, uint8_t slot) {
 
 	if (client->last_ret != MESSAGE_SUCCESS) {
-		logprintf(config->log, LOG_WARNING, "MESSAGE_INVALID: DataMessage must be send in SUCCESS state.\n");
+		logprintf(config->log, LOG_WARNING, "client %d: MESSAGE_INVALID: DataMessage must be send in SUCCESS state.\n", slot);
 		return sizeof(DataMessage);
 	}
 
-	logprintf(config->log, LOG_DEBUG, "Type: 0x%.2x, code: 0x%.2x, value: 0x%.2x\n", msg->event.type, msg->event.code, msg->event.value);
+	logprintf(config->log, LOG_DEBUG, "client %d: Type: 0x%.2x, code: 0x%.2x, value: 0x%.2x\n", slot, msg->event.type, msg->event.code, msg->event.value);
 
 	ssize_t bytes = write(client->ev_fd, &msg->event, sizeof(struct input_event));
 	if (bytes < 0) {
-		logprintf(config->log, LOG_ERROR, "Cannot write to device: %s\n", strerror(errno));
+		logprintf(config->log, LOG_ERROR, "client %d: Cannot write to device: %s\n", slot, strerror(errno));
 		return -1;
 	}
 
 	return sizeof(DataMessage);
 }
 
+/**
+ * Handles data from socket except the hello message. Hello message is handled in the hello_data function.
+ */
 bool client_data(Config* config, gamepad_client* client, uint8_t slot) {
 
 	ssize_t bytes;
@@ -339,40 +382,41 @@ bool client_data(Config* config, gamepad_client* client, uint8_t slot) {
 		bytes = get_size_from_command(msg, client->bytes_available);
 
 		if (bytes < 0){
-			logprintf(config->log, LOG_WARNING, "unkown message: 0x%.2x.\n", msg[0]);
+			logprintf(config->log, LOG_WARNING, "client: %d: unkown message: 0x%.2x.\n", slot, msg[0]);
 			return false;
 		}
 
 		// we need additional bytes
 		if (client->bytes_available < bytes) {
-			logprintf(config->log, LOG_DEBUG, "additional bytes...\n");
+			logprintf(config->log, LOG_DEBUG, "client: %d: additional bytes...\n", slot);
 			return true;
 		}
 
+		// handle messages
 		switch (msg[0]) {
 			case MESSAGE_PASSWORD:
-				ret = handle_password(config, client, (PasswordMessage*) msg);
+				ret = handle_password(config, client, (PasswordMessage*) msg, slot);
 				break;
 			case MESSAGE_ABSINFO:
-				ret = handle_absinfo(config, client, (ABSInfoMessage*) msg);
+				ret = handle_absinfo(config, client, (ABSInfoMessage*) msg, slot);
 				break;
 			case MESSAGE_DEVICE:
-				ret = handle_device(config, client, (DeviceMessage*) msg);
+				ret = handle_device(config, client, (DeviceMessage*) msg, slot);
 				break;
 			case MESSAGE_SETUP_REQUIRED:
-				ret = handle_setup_required(config, client, msg);
+				ret = handle_setup_required(config, client, msg, slot);
 				break;
 			case MESSAGE_QUIT:
-				ret = handle_quit(config, client, msg);
+				ret = handle_quit(config, client, msg, slot);
 				break;
 			case MESSAGE_SETUP_END:
 				ret = handle_setup_end(config, client, msg, slot);
 				break;
 			case MESSAGE_DATA:
-				ret = handle_data(config, client, (DataMessage*) msg);
+				ret = handle_data(config, client, (DataMessage*) msg, slot);
 				break;
 			default:
-				logprintf(config->log, LOG_ERROR, "Unkown message: 0x%.2x\n", msg[0]);
+				logprintf(config->log, LOG_ERROR, "client: %d: Unkown message: 0x%.2x\n", slot, msg[0]);
 				ret = -1;
 				break;
 		}
@@ -388,14 +432,18 @@ bool client_data(Config* config, gamepad_client* client, uint8_t slot) {
 		if (ret > 0) {
 			client->scan_offset += ret;
 			client->bytes_available -= ret;
-			logprintf(config->log, LOG_DEBUG, "Update offsets to (%d, %d).\n", client->scan_offset, client->bytes_available);
+			logprintf(config->log, LOG_DEBUG, "client: %d: Update offsets to (%d, %d).\n", slot, client->scan_offset, client->bytes_available);
 		}
 	}
 	return true;
 }
 
-bool recv_data(Config* config, gamepad_client* client) {
-	logprintf(config->log, LOG_DEBUG, "move %d bytes.\n", client->bytes_available);
+/**
+ * moves the buffer of a client to the beginning and receives new data from the socket.
+ * Returns false when a error occurs on receiving data from socket.
+ */
+bool recv_data(Config* config, gamepad_client* client, uint8_t slot) {
+	logprintf(config->log, LOG_DEBUG, "client %d: move %d bytes.\n", slot, client->bytes_available);
 	memmove(client->input_buffer, client->input_buffer + client->scan_offset, client->bytes_available);
 
 	ssize_t bytes;
@@ -404,15 +452,15 @@ bool recv_data(Config* config, gamepad_client* client) {
 
 	// cannot receive data
 	if (bytes < 0) {
-		logprintf(config->log, LOG_ERROR, "Cannot recveice data from socket.\n");
+		logprintf(config->log, LOG_ERROR, "client: %d: Cannot recveice data from socket.\n", slot);
 		return false;
 	}
 
 	if (bytes == 0) {
-		logprintf(config->log, LOG_ERROR, "Client closes connection.\n");
+		logprintf(config->log, LOG_ERROR, "client %d: Client closes connection.\n", slot);
 		return false;
 	}
-	logprintf(config->log, LOG_DEBUG, "%d bytes received\n", bytes);
+	logprintf(config->log, LOG_DEBUG, "client %d: %zd bytes received\n", slot, bytes);
 
 	client->bytes_available += bytes;
 	client->scan_offset = 0;
@@ -420,6 +468,7 @@ bool recv_data(Config* config, gamepad_client* client) {
 	return true;
 }
 
+// initializes the gamepad_client struct
 void init_client(gamepad_client* client) {
 	client->fd = -1;
 	client->ev_fd = -1;
@@ -433,19 +482,25 @@ int main(int argc, char** argv) {
 	fd_set readfds;
 	int maxfd;
 	int status;
+
+	// init config struct
 	Config config = {
 		.program_name = argv[0],
 		.log = {
 			.stream = stderr,
 			.verbosity = 5
 		},
+		.limit = DEV_TYPE_UNKNOWN,
 		.bindhost = getenv("SERVER_HOST") ? getenv("SERVER_HOST"):DEFAULT_HOST,
 		.port = getenv("SERVER_PORT") ? getenv("SERVER_PORT"):DEFAULT_PORT,
 		.password = getenv("SERVER_PW") ? getenv("SERVER_PW"):DEFAULT_PASSWORD
 	};
 
+	// argument parsing
 	add_arguments(&config);
 	status = eargs_parse(argc, argv, NULL, &config);
+
+	// error in parsing arguments
 	if (status < 0) {
 		return 1;
 	} else if (status > 0) {
@@ -469,6 +524,7 @@ int main(int argc, char** argv) {
 	}
 
 	gamepad_client waiting_clients[MAX_WAITING_CLIENTS];
+	// initialize all waiting slots to invalid sockets
 	for (u = 0; u < MAX_WAITING_CLIENTS; u++) {
 		init_client(waiting_clients + u);
 	}
@@ -480,6 +536,8 @@ int main(int argc, char** argv) {
 		FD_ZERO(&readfds);
 		FD_SET(listen_fd, &readfds);
 		maxfd = listen_fd;
+
+		// adding client slots
 		for(u = 0; u < MAX_CLIENTS; u++){
 			if(clients[u].fd >= 0){
 				FD_SET(clients[u].fd, &readfds);
@@ -487,6 +545,7 @@ int main(int argc, char** argv) {
 			}
 		}
 
+		// adding waiting slots
 		for (u = 0; u < MAX_WAITING_CLIENTS; u++) {
 			if (waiting_clients[u].fd >= 0) {
 				FD_SET(waiting_clients[u].fd, &readfds);
@@ -510,9 +569,8 @@ int main(int argc, char** argv) {
 			for(u = 0; u < MAX_CLIENTS; u++){
 				if(FD_ISSET(clients[u].fd, &readfds)){
 					//handle client data
-					if (!recv_data(&config, clients + u)) {
-						close(clients[u].fd);
-						clients[u].fd = -1;
+					if (!recv_data(&config, clients + u, u)) {
+						client_close(config.log, clients + u, u, false);
 						continue;
 					}
 					client_data(&config, clients + u, u);
@@ -522,21 +580,20 @@ int main(int argc, char** argv) {
 			for (u = 0; u < MAX_WAITING_CLIENTS; u++) {
 				if (FD_ISSET(waiting_clients[u].fd, &readfds)) {
 					//handle waiting clients
-					if (!recv_data(&config, waiting_clients + u)) {
-						logprintf(config.log, LOG_ERROR, "Error in recv data.\n");
+					if (!recv_data(&config, waiting_clients + u, -u)) {
 						close(waiting_clients[u].fd);
 						waiting_clients[u].fd = -1;
 						continue;
 					}
-					logprintf(config.log, LOG_DEBUG, "handle hello\n");
-					client_hello(&config, waiting_clients + u);
+					logprintf(config.log, LOG_DEBUG, "waiting slot %d: handle hello\n", u);
+					client_hello(&config, waiting_clients + u, u);
 				}
 			}
 		}
 	}
 
 	for(u = 0; u < MAX_CLIENTS; u++){
-		client_close(config.log, clients + u, true);
+		client_close(config.log, clients + u, u, true);
 	}
 	close(listen_fd);
 	return EXIT_SUCCESS;

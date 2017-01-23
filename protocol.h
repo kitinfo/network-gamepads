@@ -2,11 +2,18 @@
 
 #include <linux/input.h>
 
-#define PROTOCOL_VERSION 0x01
+#define PROTOCOL_VERSION 0x02
 #define INPUT_BUFFER_SIZE 1024
 #define DEFAULT_PASSWORD "foobar"
 #define DEFAULT_HOST "::"
 #define DEFAULT_PORT "9292"
+
+enum DEV_TYPE {
+	DEV_TYPE_UNKNOWN = 0,
+	DEV_TYPE_MOUSE = 1,
+	DEV_TYPE_GAMEPAD = 2,
+	DEV_TYPE_KEYBOARD = 3
+};
 
 enum MESSAGE_TYPES {
 	MESSAGE_HELLO = 0x01,
@@ -24,7 +31,8 @@ enum MESSAGE_TYPES {
 	MESSAGE_SETUP_REQUIRED = 0xF6,
 	MESSAGE_CLIENT_SLOT_IN_USE = 0xF7,
 	MESSAGE_CLIENT_SLOTS_EXHAUSTED = 0xF8,
-	MESSAGE_QUIT = 0xF9
+	MESSAGE_QUIT = 0xF9,
+	MESSAGE_DEVICE_NOT_ALLOWED = 0xFA
 };
 
 struct MessageInfo {
@@ -89,7 +97,8 @@ struct MessageInfo MESSAGE_TYPES_INFO[256] = {
 	[MESSAGE_SETUP_REQUIRED] = { .length = 1, .name = "setup required"},
 	[MESSAGE_CLIENT_SLOT_IN_USE] = { .length = 1, .name = "client slot in use"},
 	[MESSAGE_CLIENT_SLOTS_EXHAUSTED] = { .length = 1, .name = "client slots exhausted"},
-	[MESSAGE_QUIT] = { .length = 1, .name = "quit"}
+	[MESSAGE_QUIT] = { .length = 1, .name = "quit"},
+	[MESSAGE_DEVICE_NOT_ALLOWED] = { .length = 1, .name = "device is not allowed"}
 };
 
 

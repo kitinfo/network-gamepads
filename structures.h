@@ -3,13 +3,6 @@
 
 #include "protocol.h"
 
-enum DEV_TYPE {
-	DEV_TYPE_UNKOWN = 0,
-	DEV_TYPE_MICE = 1,
-	DEV_TYPE_GAMEPAD = 2,
-	DEV_TYPE_KEYBOARD = 3
-};
-
 struct device_meta {
 	int devtype;
 	char* name;
