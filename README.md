@@ -97,4 +97,4 @@ were attached directly.
 
 ## Protocol
 
-A detailed description of the protocol may be found in [protocol/protocol.txt](protocol/protocol.txt)
+A detailed description of the protocol may be found in [protocol/protocol.md](protocol/protocol.md)
