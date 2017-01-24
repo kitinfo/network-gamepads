@@ -316,8 +316,8 @@ int handle_setup_required(Config* config, gamepad_client* client, uint8_t* messa
 
 // handles the quit message. Returns the bytes used or -1 on failure.
 int handle_quit(Config* config, gamepad_client* client, uint8_t* msg, uint8_t slot) {
-	// TODO close the ev_fd
-	return 1;
+	client_close(config->log, client, slot, true);
+	return -1;
 }
 
 // handles the setup end message. Returns the bytes used or -1 on failure.
@@ -407,8 +407,8 @@ bool client_data(Config* config, gamepad_client* client, uint8_t slot) {
 				ret = handle_setup_required(config, client, msg, slot);
 				break;
 			case MESSAGE_QUIT:
-				ret = handle_quit(config, client, msg, slot);
-				break;
+				handle_quit(config, client, msg, slot);
+				return false;
 			case MESSAGE_SETUP_END:
 				ret = handle_setup_end(config, client, msg, slot);
 				break;
