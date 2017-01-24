@@ -367,7 +367,7 @@ int handle_data(Config* config, gamepad_client* client, DataMessage* msg, uint8_
 	};
 
 	logprintf(config->log, LOG_DEBUG,
-			"client %d: Type: 0x%.2x, code: 0x%.2x, value: 0x%.2x\n", slot, event.type, event.code, event.value);
+			"client %d: Type: 0x%.2x, code: 0x%.2x, value: %d\n", slot, event.type, event.code, event.value);
 
 	ssize_t bytes = write(client->ev_fd, &event, sizeof(struct input_event));
 	if (bytes < 0) {
@@ -446,6 +446,41 @@ bool client_data(Config* config, gamepad_client* client, uint8_t slot) {
 		}
 	}
 	return true;
+}
+
+bool send_device_data(Config* config, gamepad_client* client, uint8_t slot) {
+
+	ssize_t bytes;
+
+	struct input_event event = {};
+	DataMessage msg = {0};
+	msg.msg_type = MESSAGE_DATA;
+	do {
+		bytes = read(client->ev_fd, &event, sizeof(event));
+
+		// no data
+		if (bytes < 0 && errno == EAGAIN) {
+			return true;
+		}
+		if (bytes <= 0) {
+			logprintf(config->log, LOG_ERROR, "slot %d: cannot read from device: %s", slot, strerror(errno));
+			return false;
+		}
+		// not an feedback event
+		if (event.type != EV_FF) {
+			continue;
+		}
+
+		msg.type = htobe16(event.type);
+		msg.code = htobe16(event.code);
+		msg.value = htobe32(event.value);
+
+		if (!send_message(config->log, client->fd, &msg, sizeof(msg))) {
+			return false;
+		}
+	} while (bytes > 0);
+
+	return false;
 }
 
 /**
@@ -559,6 +594,12 @@ int main(int argc, char** argv) {
 				FD_SET(clients[u].fd, &readfds);
 				maxfd = (maxfd > clients[u].fd) ? maxfd:clients[u].fd;
 			}
+			// device fds
+			if (clients[u].ev_fd >= 0) {
+				FD_SET(clients[u].ev_fd, &readfds);
+				maxfd = (maxfd > clients[u].ev_fd) ? maxfd:clients[u].ev_fd;
+			}
+
 		}
 
 		// adding waiting slots
@@ -590,6 +631,11 @@ int main(int argc, char** argv) {
 						continue;
 					}
 					client_data(&config, clients + u, u);
+				}
+				if (FD_ISSET(clients[u].ev_fd, &readfds)) {
+					if (!send_device_data(&config, clients + u, u)) {
+						continue;
+					}
 				}
 			}
 

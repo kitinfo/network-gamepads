@@ -4,6 +4,7 @@
 typedef struct {
 	LOGGER log;
 	char* program_name;
+	char* device_path;
 	char* password;
 	char* host;
 	char* port;

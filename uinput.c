@@ -10,7 +10,7 @@
 #include "uinput.h"
 
 int open_uinput() {
-	return open(UINPUT_PATH, O_WRONLY | O_NONBLOCK);
+	return open(UINPUT_PATH, O_RDWR | O_NONBLOCK);
 }
 
 bool enable_bits(LOGGER log, int fd, const input_device_bits* what) {
