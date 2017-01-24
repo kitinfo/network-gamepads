@@ -21,23 +21,25 @@ with a one message type byte (uint8_t). After this the data part of the
 message is followed.
 
 # Overview of message types
-* HELLO                  = 0x01
-* PASSWORD               = 0x02
-* ABSINFO                = 0x03
-* DEVICE                 = 0x04
-* SETUP_END              = 0x05
-* DATA                   = 0x10
-* SUCCESS                = 0xF0
-* VERSION_MISMATCH       = 0xF1
-* INVALID_PASSWORD       = 0xF2
-* INVALID_CLIENT_SLOT    = 0xF3
-* INVALID_MESSAGE        = 0xF4
-* PASSWORD_REQUIRED      = 0xF5
-* SETUP_REQUIRED         = 0xF6
-* CLIENT_SLOT_IN_USE     = 0xF7
-* CLIENT_SLOTS_EXHAUSTED = 0xF8
-* QUIT                   = 0xF9
-* DEVICE_NOT_ALLOWED     = 0xFA
+| Message name           | Message id |
+|------------------------|------------|
+| HELLO                  | 0x01       |
+| PASSWORD               | 0x02       |
+| ABSINFO                | 0x03       |
+| DEVICE                 | 0x04       |
+| SETUP_END              | 0x05       |
+| DATA                   | 0x10       |
+| SUCCESS                | 0xF0       |
+| VERSION_MISMATCH       | 0xF1       |
+| INVALID_PASSWORD       | 0xF2       |
+| INVALID_CLIENT_SLOT    | 0xF3       |
+| INVALID_MESSAGE        | 0xF4       |
+| PASSWORD_REQUIRED      | 0xF5       |
+| SETUP_REQUIRED         | 0xF6       |
+| CLIENT_SLOT_IN_USE     | 0xF7       |
+| CLIENT_SLOTS_EXHAUSTED | 0xF8       |
+| QUIT                   | 0xF9       |
+| DEVICE_NOT_ALLOWED     | 0xFA       |
 
 # Messages
 
