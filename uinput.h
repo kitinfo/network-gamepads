@@ -85,43 +85,6 @@ const input_device_bits GAMEPAD_KEYBITS = {
 		{ UI_SET_ABSBIT, ABS_HAT0Y },
 	}
 };
-	/* XBOX */
-const input_device_bits XBOX_KEYBITS = {
-	.len = 31,
-	.bits = {
-		{ UI_SET_EVBIT, EV_SYN },
-		{ UI_SET_EVBIT, EV_KEY },
-		{ UI_SET_EVBIT, EV_ABS },
-		{ UI_SET_EVBIT, EV_FF },
-		{ UI_SET_EVBIT, EV_MSC },
-		{ UI_SET_MSCBIT, MSC_SCAN },
-		{ UI_SET_KEYBIT, BTN_A },
-		{ UI_SET_KEYBIT, BTN_B },
-		{ UI_SET_KEYBIT, BTN_X },
-		{ UI_SET_KEYBIT, BTN_Y },
-		{ UI_SET_KEYBIT, BTN_TL },
-		{ UI_SET_KEYBIT, BTN_TR },
-		{ UI_SET_KEYBIT, BTN_SELECT },
-		{ UI_SET_KEYBIT, BTN_START },
-		{ UI_SET_KEYBIT, BTN_MODE },
-		{ UI_SET_KEYBIT, BTN_THUMBL },
-		{ UI_SET_KEYBIT, BTN_THUMBR },
-		{ UI_SET_ABSBIT, ABS_X },
-		{ UI_SET_ABSBIT, ABS_Y },
-		{ UI_SET_ABSBIT, ABS_Z },
-		{ UI_SET_ABSBIT, ABS_RX },
-		{ UI_SET_ABSBIT, ABS_RY },
-		{ UI_SET_ABSBIT, ABS_RZ },
-		{ UI_SET_ABSBIT, ABS_HAT0X },
-		{ UI_SET_ABSBIT, ABS_HAT0Y },
-		{ UI_SET_FFBIT, FF_RUMBLE },
-		{ UI_SET_FFBIT, FF_PERIODIC },
-		{ UI_SET_FFBIT, FF_SQUARE },
-		{ UI_SET_FFBIT, FF_TRIANGLE },
-		{ UI_SET_FFBIT, FF_SINE },
-		{ UI_SET_FFBIT, FF_GAIN },
-	}
-};
 	/* KEYBOARD */
 const input_device_bits KEYBOARD_KEYBITS = {
 	.len = 139,
@@ -277,11 +240,11 @@ const input_device_bits DEFAULT_KEYBITS = {
 };
 
 const input_device_bits* DEVICE_TYPES[64] = {
-	[0 ... 63] = NULL,
-	[0] = &MICE_KEYBITS,
-	&KEYBOARD_KEYBITS,
+	&DEFAULT_KEYBITS,
+	&MICE_KEYBITS,
 	&GAMEPAD_KEYBITS,
-	&XBOX_KEYBITS,
+	&KEYBOARD_KEYBITS,
+	0
 };
 bool cleanup_device(LOGGER log, gamepad_client* client);
 void init_abs_info(struct device_meta* meta);

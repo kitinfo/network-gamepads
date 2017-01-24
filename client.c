@@ -251,111 +251,6 @@ int device_reopen(LOGGER log, char* file) {
 	return -1;
 }
 
-ssize_t server_to_event(Config* config, int event_fd, uint8_t buf[], ssize_t len) {
-	ssize_t bytes = 0;
-	ssize_t written = 0;
-	struct input_event event = {};
-	DataMessage* data;
-
-	while (len >= sizeof(DataMessage)) {
-		data = (DataMessage*) buf + bytes;
-
-		if (data->msg_type == MESSAGE_DATA) {
-			gettimeofday(&event.time, NULL);
-			event.type = be16toh(data->type);
-			event.code = be16toh(data->code);
-			event.value = be32toh(data->value);
-
-			written = write(event_fd, data, sizeof(DataMessage));
-
-			if (written <= 0) {
-				logprintf(config->log, LOG_ERROR, "write() error: %s\n", strerror(errno));
-				close(event_fd);
-				event_fd = device_reopen(config->log, config->device_path);
-
-				if (event_fd < 0) {
-					return -1;
-				}
-				return server_to_event(config, event_fd, buf + bytes, len - bytes);
-			}
-
-			bytes += written;
-			len -= written;
-		} else {
-			logprintf(config->log, LOG_WARNING, "unkown packet. Ignoring");
-			bytes++;
-			len--;
-		}
-	}
-
-	return bytes;
-}
-
-ssize_t recv_data(Config* config, int sock_fd, uint8_t buf[INPUT_BUFFER_SIZE], ssize_t offset, ssize_t bytes_available) {
-	memmove(buf, buf + offset, bytes_available);
-
-	ssize_t bytes;
-
-	bytes = recv(sock_fd, buf + bytes_available, INPUT_BUFFER_SIZE - bytes_available, 0);
-
-	if (bytes < 0) {
-		logprintf(config->log, LOG_ERROR, "Cannot receive data from socket: %s\n", strerror(errno));
-		return -1;
-	}
-
-	if (bytes == 0) {
-		logprintf(config->log, LOG_ERROR, "Server has closed the connection\n");
-		return -1;
-	}
-
-	return bytes + bytes_available;
-}
-
-bool event_to_server(Config* config, int event_fd, int sock_fd) {
-	ssize_t bytes;
-	struct input_event event = {};
-	DataMessage data = {0};
-	data.msg_type = MESSAGE_DATA;
-
-	//block on read
-	bytes = read(event_fd, &event, sizeof(event));
-	if(bytes < 0) {
-		logprintf(config->log, LOG_ERROR, "read() error: %s\nTrying to reconnect.\n", strerror(errno));
-		close(event_fd);
-		event_fd = device_reopen(config->log, config->device_path);
-		if (event_fd < 0) {
-			return false;
-		} else {
-			return true;
-		}
-	}
-	if(bytes == sizeof(event)) {
-		logprintf(config->log, LOG_DEBUG, "Event type:%d, code:%d, value:%d\n", event.type, event.code, event.value);
-
-		data.type = event.type;
-		data.code = event.code;
-		data.value = event.value;
-
-		if(!send_message(config->log, sock_fd, &data, sizeof(data))) {
-			//check if connection is closed
-			if(errno == ECONNRESET || errno == EPIPE) {
-				if (!init_connect(sock_fd, event_fd, config)) {
-					logprintf(config->log, LOG_ERROR, "Cannot reconnect to server: %s\n", strerror(errno));
-					return false;
-				}
-			} else {
-				logprintf(config->log, LOG_ERROR, "Error in sending message: %s\n", strerror(errno));
-				return false;
-			}
-		}
-	} else{
-		logprintf(config->log, LOG_WARNING, "Short read from event descriptor (%zd bytes)\n", bytes);
-		return true;
-	}
-
-	return true;
-}
-
 int main(int argc, char** argv){
 
 	Config config = {
@@ -364,7 +259,6 @@ int main(int argc, char** argv){
 			.verbosity = 5
 		},
 		.program_name = argv[0],
-		.device_path = NULL,
 		.host = getenv("SERVER_HOST") ? getenv("SERVER_HOST"):DEFAULT_HOST,
 		.password = getenv("SERVER_PW") ? getenv("SERVER_PW"):DEFAULT_PASSWORD,
 		.port = getenv("SERVER_PORT") ? getenv("SERVER_PORT"):DEFAULT_PORT,
@@ -372,11 +266,12 @@ int main(int argc, char** argv){
 		.slot = 0
 	};
 
-	int event_fd, sock_fd, status;
-	ssize_t offset, bytes_available, read;
-	fd_set read_fds;
-	ssize_t max_fd = 0;
-	uint8_t buf[INPUT_BUFFER_SIZE];
+	int event_fd, sock_fd;
+	ssize_t bytes;
+	struct input_event event;
+	DataMessage data = {0};
+	data.msg_type = MESSAGE_DATA;
+
 	add_arguments(&config);
 	char* output[argc];
 	int outputc = eargs_parse(argc, argv, output, &config);
@@ -385,8 +280,6 @@ int main(int argc, char** argv){
 		logprintf(config.log, LOG_ERROR, "Insufficient arguments\n");
 		return EXIT_FAILURE;
 	}
-
-	config.device_path = output[0];
 
 	logprintf(config.log, LOG_INFO, "Reading input events from %s\n", output[0]);
 	event_fd = open(output[0], O_RDONLY);
@@ -427,43 +320,40 @@ int main(int argc, char** argv){
 	}
 
 	while(!quit_signal){
-		FD_ZERO(&read_fds);
-		FD_SET(event_fd, &read_fds);
-		max_fd = event_fd;
+		//block on read
+		bytes = read(event_fd, &event, sizeof(event));
+		if(bytes < 0) {
+			logprintf(config.log, LOG_ERROR, "read() error: %s\nTrying to reconnect.\n", strerror(errno));
+			close(event_fd);
+			event_fd = device_reopen(config.log, output[0]);
 
-		FD_SET(sock_fd, &read_fds);
-		if (sock_fd > event_fd) {
-			max_fd = sock_fd;
-		}
-
-		status = select(max_fd + 1, &read_fds, NULL, NULL, NULL);
-
-		if (status < 0) {
-			logprintf(config.log, LOG_ERROR, "error on select: %s\n", strerror(errno));
-			break;
-		}
-
-		// device events
-		if (FD_ISSET(event_fd, &read_fds)) {
-			if (!event_to_server(&config, event_fd, sock_fd)) {
+			if (event_fd < 0) {
 				break;
+			} else {
+				continue;
 			}
 		}
+		if(bytes == sizeof(event)) {
+			logprintf(config.log, LOG_DEBUG, "Event type:%d, code:%d, value:%d\n", event.type, event.code, event.value);
 
-		// server events
-		if (FD_ISSET(sock_fd, &read_fds)) {
-			bytes_available = recv_data(&config, sock_fd, buf, offset, bytes_available);
-			if (bytes_available < 0) {
-				break;
+			data.type = event.type;
+			data.code = event.code;
+			data.value = event.value;
+
+			if(!send_message(config.log, sock_fd, &data, sizeof(data))) {
+				//check if connection is closed
+				if(errno == ECONNRESET || errno == EPIPE) {
+					if (!init_connect(sock_fd, event_fd, &config)) {
+						logprintf(config.log, LOG_ERROR, "Cannot reconnect to server: %s\n", strerror(errno));
+						break;
+					}
+				} else {
+					logprintf(config.log, LOG_ERROR, "Error in sending message: %s\n", strerror(errno));
+					break;
+				}
 			}
-
-			read = server_to_event(&config, event_fd, buf, bytes_available);
-			if (read < 0) {
-				break;
-			}
-
-			offset = read;
-			bytes_available -= read;
+		} else{
+			logprintf(config.log, LOG_WARNING, "Short read from event descriptor (%zd bytes)\n", bytes);
 		}
 	}
 	if (event_fd != -1) {
