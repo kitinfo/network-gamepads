@@ -191,11 +191,13 @@ int usage(int argc, char** argv, Config* config) {
 
 int set_limit(int argc, char** argv, Config* config) {
 	if (!strcmp(argv[1], "mouse")) {
-		config->limit = DEV_TYPE_MOUSE;
+		config->limit |= DEV_TYPE_MOUSE;
 	} else if (!strcmp(argv[1], "keyboard")) {
-		config->limit = DEV_TYPE_KEYBOARD;
+		config->limit |= DEV_TYPE_KEYBOARD;
 	} else if (!strcmp(argv[1], "gamepad")) {
-		config->limit = DEV_TYPE_GAMEPAD;
+		config->limit |= DEV_TYPE_GAMEPAD;
+	} else if (!strcmp(argv[1], "xbox")) {
+		config->limit |= DEV_TYPE_XBOX;
 	} else {
 		logprintf(config->log, LOG_ERROR,
 				"unkown device type %s. Valid ones are: gamepad, keyboard, mouse\n", argv[1]);
@@ -276,18 +278,12 @@ int handle_device(Config* config, gamepad_client* client, DeviceMessage* msg, ui
 		return -1;
 	}
 
-	// check for device limitations
-	if (config->limit > 0 && msg->type != config->limit) {
-		logprintf(config->log, LOG_WARNING, "client %d: Device type %d is not enabled\n", msg->type);
+	client->meta.devtype = be64toh(msg->type);
+	client->meta.id.bustype = be16toh(msg->id_bustype);
+	client->meta.id.vendor = be16toh(msg->id_vendor);
+	client->meta.id.product = be16toh(msg->id_product);
+	client->meta.id.version = be16toh(msg->id_version);
 
-		uint8_t message = MESSAGE_DEVICE_NOT_ALLOWED;
-
-		send_message(config->log, client->fd, &message, sizeof(message));
-		return -1;
-	}
-
-	client->meta.devtype = msg->type;
-	memcpy(&client->meta.id, &msg->ids, sizeof(struct input_id));
 	client->meta.name = malloc(msg->length);
 	memcpy(client->meta.name, msg->name, msg->length);
 
@@ -331,19 +327,26 @@ int handle_setup_end(Config* config, gamepad_client* client, uint8_t* msg, uint8
 				"client %d: MESSAGE_INVALID: SetupEndMessage must be send in SETUP state.\n", slot);
 		send_message(config->log, client->fd, &message, sizeof(message));
 		return -1;
-	} else {
-		if (!create_device(config->log, client, &client->meta)) {
-			return -1;
-		}
-		SuccessMessage message = {
-			.msg_type = MESSAGE_SUCCESS,
-			.slot = slot + 1
-		};
-		client->last_ret = MESSAGE_SUCCESS;
+	}
+	// check for device limitations
+	if (!(client->meta.devtype & config->limit)) {
+		logprintf(config->log, LOG_WARNING, "client %d: Device type 0x%zx is not enabled\n", client->meta.devtype);
 
-		if (!send_message(config->log, client->fd, &message, sizeof(message))) {
-			return -1;
-		}
+		uint8_t msg_na = MESSAGE_DEVICE_NOT_ALLOWED;
+
+		send_message(config->log, client->fd, &msg_na, sizeof(msg_na));
+		return -1;
+	}
+	if (!create_device(config->log, client, &client->meta)) {
+		return -1;
+	}
+	SuccessMessage msg_succ = {
+		.msg_type = MESSAGE_SUCCESS,
+		.slot = slot + 1
+	};
+	client->last_ret = MESSAGE_SUCCESS;
+	if (!send_message(config->log, client->fd, &msg_succ, sizeof(msg_succ))) {
+		return -1;
 	}
 
 	return 1;
@@ -351,15 +354,22 @@ int handle_setup_end(Config* config, gamepad_client* client, uint8_t* msg, uint8
 
 // handles data messages. Returns the bytes used or -1 on failure.
 int handle_data(Config* config, gamepad_client* client, DataMessage* msg, uint8_t slot) {
-
 	if (client->last_ret != MESSAGE_SUCCESS) {
 		logprintf(config->log, LOG_WARNING, "client %d: MESSAGE_INVALID: DataMessage must be send in SUCCESS state.\n", slot);
 		return sizeof(DataMessage);
 	}
 
-	logprintf(config->log, LOG_DEBUG, "client %d: Type: 0x%.2x, code: 0x%.2x, value: 0x%.2x\n", slot, msg->event.type, msg->event.code, msg->event.value);
+	struct input_event event = {
+		.time = {0},
+		.type = be16toh(msg->type),
+		.code = be16toh(msg->code),
+		.value = be32toh(msg->value)
+	};
 
-	ssize_t bytes = write(client->ev_fd, &msg->event, sizeof(struct input_event));
+	logprintf(config->log, LOG_DEBUG,
+			"client %d: Type: 0x%.2x, code: 0x%.2x, value: 0x%.2x\n", slot, event.type, event.code, event.value);
+
+	ssize_t bytes = write(client->ev_fd, &event, sizeof(struct input_event));
 	if (bytes < 0) {
 		logprintf(config->log, LOG_ERROR, "client %d: Cannot write to device: %s\n", slot, strerror(errno));
 		return -1;
@@ -490,7 +500,7 @@ int main(int argc, char** argv) {
 			.stream = stderr,
 			.verbosity = 5
 		},
-		.limit = DEV_TYPE_UNKNOWN,
+		.limit = 0,
 		.bindhost = getenv("SERVER_HOST") ? getenv("SERVER_HOST"):DEFAULT_HOST,
 		.port = getenv("SERVER_PORT") ? getenv("SERVER_PORT"):DEFAULT_PORT,
 		.password = getenv("SERVER_PW") ? getenv("SERVER_PW"):DEFAULT_PASSWORD
@@ -506,6 +516,12 @@ int main(int argc, char** argv) {
 	} else if (status > 0) {
 		logprintf(config.log, LOG_ERROR, "Unkown command line arguments.\n");
 		return usage(argc, argv, &config);
+	}
+
+	// enable all devices if no limit has been set
+	if (config.limit == 0) {
+		config.limit = UINT64_MAX;
+		logprintf(config.log, LOG_INFO, "enable all devices: 0x%zx\n", config.limit);
 	}
 
 	logprintf(config.log, LOG_INFO, "%s starting\nProtocol Version: %.2x\n", SERVER_VERSION, PROTOCOL_VERSION);

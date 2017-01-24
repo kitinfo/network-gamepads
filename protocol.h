@@ -1,18 +1,20 @@
 #pragma once
+#pragma pack(1)
 
 #include <linux/input.h>
 
-#define PROTOCOL_VERSION 0x02
+#define PROTOCOL_VERSION 0x03
 #define INPUT_BUFFER_SIZE 1024
 #define DEFAULT_PASSWORD "foobar"
 #define DEFAULT_HOST "::"
 #define DEFAULT_PORT "9292"
 
 enum DEV_TYPE {
-	DEV_TYPE_UNKNOWN = 0,
-	DEV_TYPE_MOUSE = 1,
-	DEV_TYPE_GAMEPAD = 2,
-	DEV_TYPE_KEYBOARD = 3
+	DEV_TYPE_UNKNOWN  = 0x00,
+	DEV_TYPE_MOUSE    = 0x01,
+	DEV_TYPE_KEYBOARD = 0x02,
+	DEV_TYPE_GAMEPAD  = 0x04,
+	DEV_TYPE_XBOX     = 0x08
 };
 
 enum MESSAGE_TYPES {
@@ -60,14 +62,19 @@ typedef struct {
 typedef struct {
 	uint8_t msg_type;
 	uint8_t length;
-	uint8_t type;
-	struct input_id ids;
+	uint64_t type;
+	uint16_t id_bustype;
+	uint16_t id_vendor;
+	uint16_t id_product;
+	uint16_t id_version;
 	char name[];
 } DeviceMessage;
 
 typedef struct {
 	uint8_t msg_type;
-	struct input_event event;
+	uint16_t type;
+	uint16_t code;
+	__s32 value;
 } DataMessage;
 
 typedef struct {

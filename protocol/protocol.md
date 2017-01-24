@@ -1,4 +1,4 @@
-Network gamepads protocol documentation. Version: 0x02
+Network gamepads protocol documentation. Version: 0x03
 
 # Security
 
@@ -48,7 +48,7 @@ message is followed.
 ```c
 struct HelloMessage {
 	uint8_t msg_type; /* must be 0x01 */
-	uint8_t version; /* must be PROTOCOL_VERSION (0x02) */
+	uint8_t version; /* must be PROTOCOL_VERSION (0x03) */
 	uint8_t slot; /* the slot. */
 }
 ```
@@ -122,7 +122,7 @@ the client sends a valid client id in the HELLO message.
 struct DeviceMessage {
 	uint8_t msg_type; /* must be 0x04 */
 	uint8_t length; /* length of the name */
-	uint8_t type; /* see device types */
+	uint64_t type; /* see device types */
 	struct input_id ids; /* see input.h */
 	char name[]; /* must be of the given length */
 }
@@ -141,6 +141,19 @@ It contains the following infos:
 * name: a char array with the name of the device.
 
 The server will not respond until the SETUP_END message will be send.
+
+### Device types
+
+Device types enable different input events on the server.
+Device types can be combined (mouse | keyboard for keyboards with trackball or so).
+
+| name     | value   | description     |
+|----------|---------|-----------------|
+| unknown  | 0x0000  | Unknown device  |
+| mouse    | 0x0001  | Mouse device    |
+| keyboard | 0x0002  | Keyboard device |
+| gamepad  | 0x0004  | Gamepad device  |
+| xbox     | 0x0008  | xbox gamepad    |
 
 ## ABSINFO
 

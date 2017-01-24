@@ -2,7 +2,7 @@
 
 typedef struct {
 	LOGGER log;
-	enum DEV_TYPE limit;
+	uint64_t limit;
 	char* program_name;
 	char* bindhost;
 	char* port;

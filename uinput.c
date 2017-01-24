@@ -17,6 +17,10 @@ bool enable_bits(LOGGER log, int fd, const input_device_bits* what) {
 	int i;
 	int ret;
 
+	if (what == NULL) {
+		return true;
+	}
+
 	for (i = 0; i < what->len; i++) {
 		logprintf(log, LOG_DEBUG, "enable bit: %d\n", what->bits[i].value);
 		ret = ioctl(fd, what->bits[i].type, what->bits[i].value);
@@ -29,7 +33,18 @@ bool enable_bits(LOGGER log, int fd, const input_device_bits* what) {
 }
 
 bool enable_device_keys(LOGGER log, int fd, struct device_meta* meta) {
-	return enable_bits(log, fd, DEVICE_TYPES[meta->devtype]);
+	unsigned u;
+	uint64_t mask = 1;
+	for (u = 0; u < 64; u++) {
+		if (meta->devtype & mask) {
+			if (!enable_bits(log, fd, DEVICE_TYPES[u])) {
+				return false;
+			}
+		}
+
+		mask <<= 1;
+	}
+	return true;
 }
 void init_abs_info(struct device_meta* meta) {
 		// ABS_X

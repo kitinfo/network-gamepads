@@ -163,7 +163,6 @@ int input_negotiate(int fd, char* devname, char* password){
 		dev_msg->msg_type = MESSAGE_DEVICE;
 		dev_msg->length = strlen(devname) + 1;
 		dev_msg->type = 2;
-		memset(&dev_msg->ids, 0, sizeof(struct input_id));
 		strncpy(dev_msg->name, devname, dev_msg->length);
 
 		send(fd, dev_msg, sizeof(DeviceMessage) + dev_msg->length, 0);

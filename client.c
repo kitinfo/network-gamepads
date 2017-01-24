@@ -64,13 +64,20 @@ bool setup_device(int sock_fd, int device_fd, Config* config) {
 	memset(msg, 0, msglen);
 
 	msg->msg_type = MESSAGE_DEVICE;
-	msg->type = config->type;
 	msg->length = UINPUT_MAX_NAME_SIZE;
+	msg->type = htobe64(config->type);
 
-	if (ioctl(device_fd, EVIOCGID, &msg->ids) < 0) {
+	struct input_id ids;
+
+	if (ioctl(device_fd, EVIOCGID, &ids) < 0) {
 		logprintf(config->log, LOG_ERROR, "Cannot query device ids: %s\n", strerror(errno));
 		return false;
 	}
+
+	msg->id_bustype = htobe16(ids.bustype);
+	msg->id_vendor = htobe16(ids.vendor);
+	msg->id_product = htobe16(ids.product);
+	msg->id_version = htobe16(ids.version);
 
 	if (ioctl(device_fd, EVIOCGNAME(UINPUT_MAX_NAME_SIZE - 1), msg->name) < 0) {
 		logprintf(config->log, LOG_ERROR, "Cannot query device name: %s\n", strerror(errno));
@@ -175,14 +182,18 @@ void quit() {
 
 int setType(int argc, char** argv, Config* config) {
 	if (!strcmp(argv[1], "mouse")) {
-		config->type = DEV_TYPE_MOUSE;
+		config->type |= DEV_TYPE_MOUSE;
 	} else if (!strcmp(argv[1], "gamepad")) {
-		config->type = DEV_TYPE_GAMEPAD;
+		config->type |= DEV_TYPE_GAMEPAD;
 	} else if (!strcmp(argv[1], "keyboard")) {
-		config->type = DEV_TYPE_KEYBOARD;
+		config->type |= DEV_TYPE_KEYBOARD;
+	} else if (!strcmp(argv[1], "xbox")) {
+		config->type |= DEV_TYPE_XBOX;
 	} else {
 		return -1;
 	}
+
+	printf("type: 0x%zx\n", config->type);
 
 	return 1;
 }
@@ -257,6 +268,7 @@ int main(int argc, char** argv){
 
 	int event_fd, sock_fd;
 	ssize_t bytes;
+	struct input_event event;
 	DataMessage data = {0};
 	data.msg_type = MESSAGE_DATA;
 
@@ -309,7 +321,7 @@ int main(int argc, char** argv){
 
 	while(!quit_signal){
 		//block on read
-		bytes = read(event_fd, &data.event, sizeof(data.event));
+		bytes = read(event_fd, &event, sizeof(event));
 		if(bytes < 0) {
 			logprintf(config.log, LOG_ERROR, "read() error: %s\nTrying to reconnect.\n", strerror(errno));
 			close(event_fd);
@@ -321,8 +333,12 @@ int main(int argc, char** argv){
 				continue;
 			}
 		}
-		if(bytes == sizeof(data.event)) {
-			logprintf(config.log, LOG_DEBUG, "Event type:%d, code:%d, value:%d\n", data.event.type, data.event.code, data.event.value);
+		if(bytes == sizeof(event)) {
+			logprintf(config.log, LOG_DEBUG, "Event type:%d, code:%d, value:%d\n", event.type, event.code, event.value);
+
+			data.type = event.type;
+			data.code = event.code;
+			data.value = event.value;
 
 			if(!send_message(config.log, sock_fd, &data, sizeof(data))) {
 				//check if connection is closed
