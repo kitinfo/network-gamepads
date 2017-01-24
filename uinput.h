@@ -85,6 +85,36 @@ const input_device_bits GAMEPAD_KEYBITS = {
 		{ UI_SET_ABSBIT, ABS_HAT0Y },
 	}
 };
+	/* XBOX */
+const input_device_bits XBOX_KEYBITS = {
+	.len = 24,
+	.bits = {
+		{ UI_SET_EVBIT, EV_SYN },
+		{ UI_SET_EVBIT, EV_KEY },
+		{ UI_SET_EVBIT, EV_ABS },
+		{ UI_SET_EVBIT, EV_MSC },
+		{ UI_SET_MSCBIT, MSC_SCAN },
+		{ UI_SET_KEYBIT, BTN_A },
+		{ UI_SET_KEYBIT, BTN_B },
+		{ UI_SET_KEYBIT, BTN_X },
+		{ UI_SET_KEYBIT, BTN_Y },
+		{ UI_SET_KEYBIT, BTN_TL },
+		{ UI_SET_KEYBIT, BTN_TR },
+		{ UI_SET_KEYBIT, BTN_SELECT },
+		{ UI_SET_KEYBIT, BTN_START },
+		{ UI_SET_KEYBIT, BTN_MODE },
+		{ UI_SET_KEYBIT, BTN_THUMBL },
+		{ UI_SET_KEYBIT, BTN_THUMBR },
+		{ UI_SET_ABSBIT, ABS_X },
+		{ UI_SET_ABSBIT, ABS_Y },
+		{ UI_SET_ABSBIT, ABS_Z },
+		{ UI_SET_ABSBIT, ABS_RX },
+		{ UI_SET_ABSBIT, ABS_RY },
+		{ UI_SET_ABSBIT, ABS_RZ },
+		{ UI_SET_ABSBIT, ABS_HAT0X },
+		{ UI_SET_ABSBIT, ABS_HAT0Y },
+	}
+};
 	/* KEYBOARD */
 const input_device_bits KEYBOARD_KEYBITS = {
 	.len = 139,
@@ -240,11 +270,11 @@ const input_device_bits DEFAULT_KEYBITS = {
 };
 
 const input_device_bits* DEVICE_TYPES[64] = {
-	&DEFAULT_KEYBITS,
-	&MICE_KEYBITS,
+	[0 ... 63] = NULL,
+	[0] = &MICE_KEYBITS,
 	&GAMEPAD_KEYBITS,
 	&KEYBOARD_KEYBITS,
-	0
+	&XBOX_KEYBITS,
 };
 bool cleanup_device(LOGGER log, gamepad_client* client);
 void init_abs_info(struct device_meta* meta);

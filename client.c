@@ -336,9 +336,9 @@ int main(int argc, char** argv){
 		if(bytes == sizeof(event)) {
 			logprintf(config.log, LOG_DEBUG, "Event type:%d, code:%d, value:%d\n", event.type, event.code, event.value);
 
-			data.type = event.type;
-			data.code = event.code;
-			data.value = event.value;
+			data.type = htobe16(event.type);
+			data.code = htobe16(event.code);
+			data.value = htobe32(event.value);
 
 			if(!send_message(config.log, sock_fd, &data, sizeof(data))) {
 				//check if connection is closed

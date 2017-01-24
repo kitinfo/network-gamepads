@@ -37,6 +37,7 @@ bool enable_device_keys(LOGGER log, int fd, struct device_meta* meta) {
 	uint64_t mask = 1;
 	for (u = 0; u < 64; u++) {
 		if (meta->devtype & mask) {
+			logprintf(log, LOG_INFO, "enable device keys: 0x%x - %d\n", mask, u);
 			if (!enable_bits(log, fd, DEVICE_TYPES[u])) {
 				return false;
 			}
