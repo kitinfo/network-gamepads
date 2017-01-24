@@ -1,6 +1,6 @@
 Network gamepads protocol documentation. Version: 0x02
 
-== Security ==
+# Security
 
 * Do not use this protocol to send your keyboard over the internet.
 * The connection is not secure.
@@ -9,10 +9,10 @@ Network gamepads protocol documentation. Version: 0x02
 * Don't use a server password that you use on other services.
 
 If you need to send keyboard to a remote x session use something like this:
-```
+```bash
 	ssh -X <server> x2x -to :0 -nomouse
 ```
-== Introduction ==
+# Introduction
 
 This is the first draft for the network gamepad binary protocol.
 
@@ -20,7 +20,7 @@ The binary protocol is splitted into messages. Every message begins
 with a one message type byte (uint8_t). After this the data part of the
 message is followed.
 
-== Overview of message types ==
+# Overview of message types
 * HELLO                  = 0x01
 * PASSWORD               = 0x02
 * ABSINFO                = 0x03
@@ -39,9 +39,9 @@ message is followed.
 * QUIT                   = 0xF9
 * DEVICE_NOT_ALLOWED     = 0xFA
 
-== Messages ==
+# Messages
 
-=== Hello ===
+## Hello
 
 ```c
 struct HelloMessage {
@@ -84,7 +84,7 @@ Example:
 0x01 0x01 0x00
 (Message type: HELLO; Version: 0x01; Client slot: next free)
 
-=== PASSWORD ===
+## PASSWORD
 
 ```c
 struct PasswordMessage {
@@ -114,7 +114,7 @@ If the password is correct the server responds with SETUP_REQUIRED or with
 SUCCESS if the client slot has already been set up. This is only the case if
 the client sends a valid client id in the HELLO message.
 
-=== DEVICE ===
+## DEVICE
 
 ```c
 struct DeviceMessage {
@@ -140,7 +140,7 @@ It contains the following infos:
 
 The server will not respond until the SETUP_END message will be send.
 
-=== ABSINFO ===
+## ABSINFO
 
 ```c
 struct ABSInfoMessage {
@@ -160,7 +160,7 @@ struct.
 
 The server will not respond until the SETUP_END message will be send.
 
-=== SETUP_END ===
+## SETUP_END
 
 ```c
 struct SetupEndMessage {
@@ -174,7 +174,7 @@ setup mode.
 After the message send the server can answer with SUCCESS if everything is
 fine.
 
-=== DATA ===
+## DATA
 
 ```c
 struct DataMessage {
@@ -193,7 +193,7 @@ on the server (currently 16 bytes at most systems).
 The server responds currently only on error with INVALID_MESSAGE when the data
 message isn't sended in success state of the server.
 
-=== SUCCESS ===
+## SUCCESS
 
 ```c
 struct SuccessMessage {
@@ -209,7 +209,7 @@ the server without the setup overhead.
 After the client receives this message, DATA messages can be send.
 
 
-=== VERSION_MISMATCH ===
+## VERSION_MISMATCH
 
 ```c
 struct VersionMismatchMessage {
@@ -226,7 +226,7 @@ The message contains the server version so that the client can show it.
 
 After this message the server closes the connection.
 
-=== INVALID_PASSWORD ===
+## INVALID_PASSWORD
 
 ```c
 struct InvalidPasswordMessage {
@@ -238,7 +238,7 @@ This message can occur as respond to the PASSWORD message.
 It signals that the given password was incorrect.
 After this message the server closes the connection.
 
-=== INVALID_CLIENT_SLOT ===
+## INVALID_CLIENT_SLOT
 
 ```c
 struct InvalidClientSlotMessage {
@@ -252,7 +252,7 @@ client slots of the server).
 
 After this message the server closes the connection.
 
-=== INVALID_MESSAGE 0xF4 ===
+## INVALID_MESSAGE
 
 ```c
 struct InvalidMessage {
@@ -265,7 +265,7 @@ when a message is send in the wrong server connection state.
 
 After this message the server closes the connection.
 
-=== PASSWORD_REQUIRED ===
+## PASSWORD_REQUIRED
 
 ```c
 struct PasswordRequiredMessage {
@@ -276,7 +276,7 @@ struct PasswordRequiredMessage {
 This message is the responds to the hello message, when a server password is
 set. After this message the client must respond with the PASSWORD message.
 
-=== SETUP_REQUIRED 0xF6 ===
+## SETUP_REQUIRED
 
 ```c
 struct SetupRequiredMessage {
@@ -294,7 +294,7 @@ The client can send this message in success connection state, too. This
 signals that the client has different device informations. The server answers
 with this message and enters the setup connection state.
 
-=== CLIENT_SLOT_IN_USE 0xF7 ===
+## CLIENT_SLOT_IN_USE
 
 ```c
 struct ClientSlotInUseMessage {
@@ -306,7 +306,7 @@ This message occurs as respond to the HELLO message.
 It signals that the request slot is already in use.
 After this message the server closes the connection.
 
-=== CLIENT_SLOTS_EXHAUSTED 0xF8 ===
+## CLIENT_SLOTS_EXHAUSTED 0xF8
 
 ```c
 struct ClientSlotsExhausted {
@@ -320,7 +320,7 @@ It signals that the server has no slots anymore.
 After this message the server closes the connection.
 
 
-=== QUIT ===
+## QUIT
 
 ```c
 struct QuitMessage {
@@ -332,7 +332,7 @@ The client may send this message to close the connection.
 This should close the uinput device on the server.
 The server closes than the socket.
 
-=== DEVICE_NOT_ALLOWED ===
+## DEVICE_NOT_ALLOWED
 
 ```c
 struct DeviceNotAllowedMessage {
