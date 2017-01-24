@@ -45,7 +45,7 @@ message is followed.
 
 ```c
 struct HelloMessage {
-	uint8_t msg_type; /* must be HELLO */
+	uint8_t msg_type; /* must be 0x01 */
 	uint8_t version; /* must be PROTOCOL_VERSION (0x02) */
 	uint8_t slot; /* the slot. */
 }
@@ -88,7 +88,7 @@ Example:
 
 ```c
 struct PasswordMessage {
-	uint8_t msg_type; /* must be PASSWORD */
+	uint8_t msg_type; /* must be 0x02 */
 	uint8_t length; /* length of password */
 	uint8_t password; /* The password. Must be of the given length. */
 }
@@ -118,7 +118,7 @@ the client sends a valid client id in the HELLO message.
 
 ```c
 struct DeviceMessage {
-	uint8_t msg_type; /* must be DEVICE */
+	uint8_t msg_type; /* must be 0x04 */
 	uint8_t length; /* length of the name */
 	uint8_t type; /* see device types */
 	struct input_id ids; /* see input.h */
@@ -144,7 +144,7 @@ The server will not respond until the SETUP_END message will be send.
 
 ```c
 struct ABSInfoMessage {
-	uint8_t msg_type; /* must be ABSINFO */
+	uint8_t msg_type; /* must be 0x03 */
 	uint8_t axis; /* must be smaller than MSG_MAX (see linux/input-event-codes.h)
 	struct input_absinfo info; /* see linux/input.h */
 }
@@ -164,7 +164,7 @@ The server will not respond until the SETUP_END message will be send.
 
 ```c
 struct SetupEndMessage {
-	uint8_t msg_type; /* must be SETUP_END */
+	uint8_t msg_type; /* must be 0x05 */
 }
 ```
 
@@ -178,7 +178,7 @@ fine.
 
 ```c
 struct DataMessage {
-	uint8_t msg_type; /* must be DATA */
+	uint8_t msg_type; /* must be 0x10 */
 	struct input_event event; /* see linux/input.h */
 }
 ```
@@ -192,3 +192,154 @@ on the server (currently 16 bytes at most systems).
 
 The server responds currently only on error with INVALID_MESSAGE when the data
 message isn't sended in success state of the server.
+
+=== SUCCESS ===
+
+```c
+struct SuccessMessage {
+	uint8_t msg_type; /* must be 0xF0 */
+	uint8_t slot;
+}
+```
+
+This message signals that the server is ready to process data events.
+The message contains one byte with the slot. This can be used to reconnect to
+the server without the setup overhead.
+
+After the client receives this message, DATA messages can be send.
+
+
+=== VERSION_MISMATCH ===
+
+```c
+struct VersionMismatchMessage {
+	uint8_t msg_type; /* must be 0xF1 */
+	uint8_t version; /* version of the server */
+}
+```
+
+This message can occur as responds to the HELLO message.
+It signals that the protocol version of the client and the version of the
+server are not the same.
+
+The message contains the server version so that the client can show it.
+
+After this message the server closes the connection.
+
+=== INVALID_PASSWORD ===
+
+```c
+struct InvalidPasswordMessage {
+	uint8_t msg_type; /* must be 0xF2 */
+}
+```
+
+This message can occur as respond to the PASSWORD message.
+It signals that the given password was incorrect.
+After this message the server closes the connection.
+
+=== INVALID_CLIENT_SLOT ===
+
+```c
+struct InvalidClientSlotMessage {
+	uint8_t msg_type; /* must be 0xF3 */
+}
+```
+
+This messages can occur after the HELLO message.
+It signals that the sended client slot is not valid (greater than the maximum
+client slots of the server).
+
+After this message the server closes the connection.
+
+=== INVALID_MESSAGE 0xF4 ===
+
+```c
+struct InvalidMessage {
+	uint8_t msg_type; /* must be 0xF4 */
+}
+```
+
+This message occurs as respond to an message with an unkown message type or
+when a message is send in the wrong server connection state.
+
+After this message the server closes the connection.
+
+=== PASSWORD_REQUIRED ===
+
+```c
+struct PasswordRequiredMessage {
+	uint8_t msg_type; /* must be 0xF5 */
+}
+```
+
+This message is the responds to the hello message, when a server password is
+set. After this message the client must respond with the PASSWORD message.
+
+=== SETUP_REQUIRED 0xF6 ===
+
+```c
+struct SetupRequiredMessage {
+	uint8_t msg_type; /* must be 0xF6 */
+}
+```
+
+This message can be a respond the HELLO message or to the PASSWORD message.
+It signals that the server must set up the uinput device.
+The client must send device set up informations (DEVICE or/and ABSINFO
+message(s)). To leave the setup connection state the client must send the
+SETUP_END message.
+
+The client can send this message in success connection state, too. This
+signals that the client has different device informations. The server answers
+with this message and enters the setup connection state.
+
+=== CLIENT_SLOT_IN_USE 0xF7 ===
+
+```c
+struct ClientSlotInUseMessage {
+	uint8_t msg_type; /* must be 0xF7 */
+}
+```
+
+This message occurs as respond to the HELLO message.
+It signals that the request slot is already in use.
+After this message the server closes the connection.
+
+=== CLIENT_SLOTS_EXHAUSTED 0xF8 ===
+
+```c
+struct ClientSlotsExhausted {
+	uint8_t msg_type; /* must be 0xF7 */
+}
+```
+
+This message occurs as respond to the HELLO message or direct after
+connection.
+It signals that the server has no slots anymore.
+After this message the server closes the connection.
+
+
+=== QUIT ===
+
+```c
+struct QuitMessage {
+	uint8_t msg_type; /* must be 0xF9 */
+}
+```
+
+The client may send this message to close the connection.
+This should close the uinput device on the server.
+The server closes than the socket.
+
+=== DEVICE_NOT_ALLOWED ===
+
+```c
+struct DeviceNotAllowedMessage {
+	uint8_t msg_type; /* must be 0xFA */
+}
+```
+
+This messages occurs after the SETUP END message.
+It signals that the request device type is not allowed on the server.
+After this message the server closes the connection.
