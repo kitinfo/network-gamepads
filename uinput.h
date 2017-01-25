@@ -272,8 +272,8 @@ const input_device_bits DEFAULT_KEYBITS = {
 const input_device_bits* DEVICE_TYPES[64] = {
 	[0 ... 63] = NULL,
 	[0] = &MICE_KEYBITS,
-	&GAMEPAD_KEYBITS,
 	&KEYBOARD_KEYBITS,
+	&GAMEPAD_KEYBITS,
 	&XBOX_KEYBITS,
 };
 bool cleanup_device(LOGGER log, gamepad_client* client);
