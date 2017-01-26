@@ -41,6 +41,22 @@ const input_device_bits MICE_KEYBITS = {
 		{ UI_SET_RELBIT, REL_WHEEL },
 	}
 };
+
+	/* ABS */
+const input_device_bits ABS_KEYBITS = {
+	.len = 9,
+	.bits = {
+		{ UI_SET_EVBIT, EV_ABS },
+		{ UI_SET_ABSBIT, ABS_X },
+		{ UI_SET_ABSBIT, ABS_Y },
+		{ UI_SET_ABSBIT, ABS_Z },
+		{ UI_SET_ABSBIT, ABS_RX },
+		{ UI_SET_ABSBIT, ABS_RY },
+		{ UI_SET_ABSBIT, ABS_RZ },
+		{ UI_SET_ABSBIT, ABS_HAT0X },
+		{ UI_SET_ABSBIT, ABS_HAT0Y },
+	}
+};
 	/* GAMEPAD */
 const input_device_bits GAMEPAD_KEYBITS = {
 	.len = 38,
@@ -275,6 +291,7 @@ const input_device_bits* DEVICE_TYPES[64] = {
 	&KEYBOARD_KEYBITS,
 	&GAMEPAD_KEYBITS,
 	&XBOX_KEYBITS,
+	&ABS_KEYBITS,
 };
 bool cleanup_device(LOGGER log, gamepad_client* client);
 void init_abs_info(struct device_meta* meta);

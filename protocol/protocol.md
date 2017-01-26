@@ -147,13 +147,14 @@ The server will not respond until the SETUP_END message will be send.
 Device types enable different input events on the server.
 Device types can be combined (mouse | keyboard for keyboards with trackball or so).
 
-| name     | value   | description     |
-|----------|---------|-----------------|
-| unknown  | 0x0000  | Unknown device  |
-| mouse    | 0x0001  | Mouse device    |
-| keyboard | 0x0002  | Keyboard device |
-| gamepad  | 0x0004  | Gamepad device  |
-| xbox     | 0x0008  | xbox gamepad    |
+| name     | value   | description       |
+|----------|---------|-------------------|
+| unknown  | 0x0000  | Unknown device    |
+| mouse    | 0x0001  | Mouse device      |
+| keyboard | 0x0002  | Keyboard device   |
+| gamepad  | 0x0004  | Gamepad device    |
+| xbox     | 0x0008  | xbox gamepad      |
+| abs      | 0x0010  | enable abs events |
 
 ## ABSINFO
 
