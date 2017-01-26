@@ -1,27 +1,30 @@
-Network gamepads protocol documentation. Version: 0x03
+Network gamepads protocol documentation.
 
-# Security
+This document describes version 3 (0x03) of the protocol.
+
+# Security considerations
 
 * Do not use this protocol to send your keyboard over the internet.
-* The connection is not secure.
+	The connection is not secured in any way (except for a plaintext password)
 * Use it only in environments you control.
-* It has no encryption so do not send important passwords with this protocol.
+* Don't type passwords.
 * Don't use a server password that you use on other services.
 
-If you need to send keyboard to a remote x session use something like this:
+In order to (securely) send keyboard input to a remote X session, use
 ```bash
 	ssh -X <server> x2x -to :0 -nomouse
 ```
 # Introduction
 
-This is the first draft for the network gamepad binary protocol.
+This is the second iteration of the network-gamepads protocol, this time
+using a binary encoding.
 
-The binary protocol is splitted into messages. Every message begins
-with a one message type byte (uint8_t). After this the data part of the
-message is followed.
+The protocol consists of a set of messages, each starting
+with a one byte message type and followed by zero or more data
+bytes, the layout of which depends on the message type.
 
 # Overview of message types
-| Message name           | Message id |
+| Message name           | Message type byte |
 |------------------------|------------|
 | HELLO                  | 0x01       |
 | PASSWORD               | 0x02       |
@@ -41,142 +44,186 @@ message is followed.
 | QUIT                   | 0xF9       |
 | DEVICE_NOT_ALLOWED     | 0xFA       |
 
-# Messages
+# Client Messages
 
-## Hello
+The client initiates a TCP connection to the server and begins the exchange by sending a
+`HELLO` message.
+
+All messages are described in detail below.
+
+## The `HELLO` message
 
 ```c
 struct HelloMessage {
 	uint8_t msg_type; /* must be 0x01 */
-	uint8_t version; /* must be PROTOCOL_VERSION (0x03) */
-	uint8_t slot; /* the slot. */
+	uint8_t version; /* must be PROTOCOL_VERSION (currently 0x03) */
+	uint8_t slot; /* The client slot requested */
 }
 ```
 
-The HELLO message must be send only at the beginning of a connection.
-Its data part contains only the version of the used protocol The version is
-one byte long (uint8_t).
-The current version is 0x02.
+The HELLO message must be the first message sent on a newly created connection.
 
-After the version byte follows a client slot byte. This byte is for selecting
-a slot on the server. If the byte is 0x00 the server selects a slot for
-client.
+Its data part contains
+	* (1 Byte) Protocol version
+		This field is used to negotiate the feature set to be supported
+	* (1 Byte) Requested client slot
+		The client slot to be acquired for this client.
+		Reconnecting to a client slot previously occupied keeps the
+		evdev device intact. A client slot may be assigned to only
+		one client. A special value of `0` indicates that the server
+		should randomly assign the client a slot.
 
-If the protocol version of the server mismatches the sended version the server
-replies with the VERSION_MISMATCH reply.
 
-If the HELLO message is not sended at the beginning of the connection the
-server replies with INVALID_MESSAGE.
+### Possible responses
 
-If the client slot is out of range the server send the INVALID_CLIENT_SLOT
-message. The server can set the slot range but can not accept more than 255
-clients.
-If the client slot is already in use the server response with
-CLIENT_SLOT_IN_USE.
+* `VERSION_MISMATCH`
+	The server does not support the protocol version indicated by the client
+* `INVALID_MESSAGE`
+	The first message received on this connection was not `HELLO`
+* `INVALID_CLIENT_SLOT`
+	An invalid slot number was passed
+* `CLIENT_SLOT_IN_USE`
+	The requested slot was already occupied
+* `CLIENT_SLOTS_EXHAUSTED`
+	The server is at it's client limit and can not accept further connections
+	until one or more clients disconnect
+* `SETUP_REQUIRED`
+	Continue by sending a `DEVICE` message
+* `PASSWORD_REQUIRED`
+	Continue by sending a `PASSWORD` message
+* `SUCCESS`
+	The client may now send `DATA` messages
 
-If the client request not specific slot but all slots are exhausted then the
-server send the CLIENT_SLOTS_EXHAUSTED message.
+### Example
+    Client -> Server
+    0x01 0x01 0x00
 
-If everything is fine the server respond with SETUP_REQUIRED if a device setup
-is required or when a
-password is required PASSWORD_REQUIRED or SUCCESS if everything is set up.
+* Message type: `HELLO`
+* Version: 0x01
+* Client slot: auto-assign
 
-Example:
-
-0x01 0x01 0x00
-(Message type: HELLO; Version: 0x01; Client slot: next free)
-
-## PASSWORD
+## The `PASSWORD` message
 
 ```c
 struct PasswordMessage {
 	uint8_t msg_type; /* must be 0x02 */
-	uint8_t length; /* length of password */
-	uint8_t password; /* The password. Must be of the given length. */
+	uint8_t length; /* Password length */
+	uint8_t password[length]; /* Password data */
 }
 ```
 
-If the server requires a password it sends the PASSWORD_REQUIRED answer.
-After that the client must respond with the PASSWORD message. Any other
-message results in the INVALID_MESSAGE respond.
+This message must be sent in response to a `PASSWORD_REQUIRED` message from the server.
 
-The message type byte is followed by a password length byte and then followed by
-the password. Because of one byte (uint8_t) the maximal length of a password is
-limited to 255 byte. The password encoding should be ascii but is not limited
-to it.
+The data part consists of
 
-Example:
-0x02 0x04 0x48 0x45 0x4C 0x4F
-(Message type byte, length of the password is 4 byte, followed by HELO)
+	* (1 Byte) Password length
+		The length (excluding any terminating characters) of the connection password
+	* (`length` Bytes) The password
+		Note that the password need not be ASCII, but ease-of-use recommends it
 
-If the password is incorrect the server responds with INVALID_PASSWORD and
-closes the connection.
+### Possible responses
 
-If the password is correct the server responds with SETUP_REQUIRED or with
-SUCCESS if the client slot has already been set up. This is only the case if
-the client sends a valid client id in the HELLO message.
+* `INVALID_PASSWORD`
+	The given password was not correct. The server will terminate the connection.
+* `SETUP_REQUIRED`
+	Continue by sending a `DEVICE` message
+* `SUCCESS`
+	The client may now continue by sending `DATA` messages
 
-## DEVICE
+### Example
+
+    Client -> Server
+    0x02 0x04 0x48 0x45 0x4C 0x4F
+
+* Message type: `PASSWORD`
+* Length: 4 Bytes
+* Password: `HELO`
+
+## The `DEVICE` message
 
 ```c
 struct DeviceMessage {
-	uint8_t msg_type; /* must be 0x04 */
-	uint8_t length; /* length of the name */
+	uint8_t msg_type; /* Must be 0x04 */
+	uint8_t length; /* length of name field */
 	uint64_t type; /* see device types */
 	struct input_id ids; /* see input.h */
-	char name[]; /* must be of the given length */
+	char name[length]; /* the name to report for the device */
 }
 
 ```
 
-After getting a SETUP_REQUIRED event from the server. The client should
-respond with the DEVICE message. This message contains infos to create the
-uinput device on the server.
-It contains the following infos:
-* length (uint8_t): length of the name. The name should not be longer than
-                    UINPUT_MAX_NAME_SIZE (see linux/uinput.h)
-* type (uint8_t): device type (see "Device types" for valid values)
-* ids (struct input_id): This is a struct from linux/input.h with the vendor id,
-                         product _id, bustype and version of the device.
-* name: a char array with the name of the device.
+This message must be sent in response to a `SETUP_REQUIRED` message from the server.
+It contains data used for creating the input device on the server.
 
-The server will not respond until the SETUP_END message will be send.
+The data part is as follows
+
+	* (1 Byte) Name length
+		The length of the data in the `name` field. Must not exceed
+		`UINPUT_MAX_NAME_SIZE` bytes
+	* (8 Bytes) Device type
+		The type of device to register on the server. This allows usage
+		of different sets of input controls. See the `Device types` table
+		for detailed information
+	* (??? Bytes) Input device data structure
+		Extended information about the device to emulate on the server
+		`TODO Extend this`
+	* (`length` Bytes) Device name
+		The name that will be displayed for this X input device
+
+The `DEVICE` message may optionally be followed by one or more `ABSINFO` messages.
+
+### Possible responses
+
+The server will not issue a response until it receives a `SETUP_END` message.
 
 ### Device types
 
-Device types enable different input events on the server.
-Device types can be combined (mouse | keyboard for keyboards with trackball or so).
+Device types enable different input controls on the server, such as absolute or relative
+axes or buttons.
+Device types may be combined by `OR`ing their types, enabling all input codes for the respective
+types.
 
 | name     | value   | description       |
 |----------|---------|-------------------|
 | unknown  | 0x0000  | Unknown device    |
-| mouse    | 0x0001  | Mouse device      |
-| keyboard | 0x0002  | Keyboard device   |
-| gamepad  | 0x0004  | Gamepad device    |
-| xbox     | 0x0008  | xbox gamepad      |
-| abs      | 0x0010  | enable abs events |
+| mouse    | 0x0001  | Mouse      |
+| keyboard | 0x0002  | Keyboard  |
+| gamepad  | 0x0004  | Generic Gamepad |
+| xbox     | 0x0008  | XBox controller      |
+| abs      | 0x0010  | Enable absolute axes |
 
-## ABSINFO
+### Example
+
+`TODO`
+
+## The `ABSINFO` message
 
 ```c
 struct ABSInfoMessage {
-	uint8_t msg_type; /* must be 0x03 */
+	uint8_t msg_type; /* Must be 0x03 */
 	uint8_t axis; /* must be smaller than MSG_MAX (see linux/input-event-codes.h)
 	struct input_absinfo info; /* see linux/input.h */
 }
 ```
 
-This message contains informations about an axis of an absolute device.
-The client should send this message for every axis of the device.
+This message contains informations about the extents and capabilities of an absolute axis.
+The client should send this message for every absolute axis of the device it wants to use.
 
-The second byte in the message is the axis information. See linux/input.h for
-all available axis (ABS_*). The rest of the message is the absinfo for the
-axis. For the right implementation see linux/input.h for the corresponding
-struct.
+The data part consists of
 
-The server will not respond until the SETUP_END message will be send.
+	* (1 Byte) Axis identifier
+		See linux/input.h for all available axes (ABS_*)
+	* (??? Bytes) `absinfo` structure (see `linux/input.h`)
 
-## SETUP_END
+### Possible responses
+
+The server will not issue a response until it receives a `SETUP_END` message.
+
+### Example
+
+`TODO`
+
+## The `SETUP_END` message
 
 ```c
 struct SetupEndMessage {
@@ -184,13 +231,16 @@ struct SetupEndMessage {
 }
 ```
 
-The message contains only the message type byte. It must be send to leave the
-setup mode.
+Indicates to the server that the client is done configuring the remote device and requests
+to send data.
 
-After the message send the server can answer with SUCCESS if everything is
-fine.
+### Possible responses
 
-## DATA
+* `SUCCESS`
+	The client may now send `DATA` messages
+* ???
+
+## The `DATA` message
 
 ```c
 struct DataMessage {
@@ -199,144 +249,28 @@ struct DataMessage {
 }
 ```
 
-This send an input event to the server.
+Sends an input event to the server for injection. The data may be filtered on the server
+according to the deivce type configured in the `DEVICE` message.
 
-After the message type byte comes the input event. See linux/input.h for the
-informations on the input_event struct.
-IMPORTANT: The struct timeval must be of the same size as the struct timeval
-on the server (currently 16 bytes at most systems).
+The data part consists of
 
-The server responds currently only on error with INVALID_MESSAGE when the data
-message isn't sended in success state of the server.
+	* (??? Bytes) Input event struct
+		See `linux/input.h` for details
+		The timestamp member of the structure must be constrained to 16bits
+		to match the format expected on the server.
 
-## SUCCESS
+### Possible responses
 
-```c
-struct SuccessMessage {
-	uint8_t msg_type; /* must be 0xF0 */
-	uint8_t slot;
-}
-```
+* `INVALID_MESSAGE`
+	Encountered when sending `DATA` message while the device is not yet configured
+* Nothing
+	When the operation has succeeded
 
-This message signals that the server is ready to process data events.
-The message contains one byte with the slot. This can be used to reconnect to
-the server without the setup overhead.
+### Example
 
-After the client receives this message, DATA messages can be send.
+`TODO`
 
-
-## VERSION_MISMATCH
-
-```c
-struct VersionMismatchMessage {
-	uint8_t msg_type; /* must be 0xF1 */
-	uint8_t version; /* version of the server */
-}
-```
-
-This message can occur as responds to the HELLO message.
-It signals that the protocol version of the client and the version of the
-server are not the same.
-
-The message contains the server version so that the client can show it.
-
-After this message the server closes the connection.
-
-## INVALID_PASSWORD
-
-```c
-struct InvalidPasswordMessage {
-	uint8_t msg_type; /* must be 0xF2 */
-}
-```
-
-This message can occur as respond to the PASSWORD message.
-It signals that the given password was incorrect.
-After this message the server closes the connection.
-
-## INVALID_CLIENT_SLOT
-
-```c
-struct InvalidClientSlotMessage {
-	uint8_t msg_type; /* must be 0xF3 */
-}
-```
-
-This messages can occur after the HELLO message.
-It signals that the sended client slot is not valid (greater than the maximum
-client slots of the server).
-
-After this message the server closes the connection.
-
-## INVALID_MESSAGE
-
-```c
-struct InvalidMessage {
-	uint8_t msg_type; /* must be 0xF4 */
-}
-```
-
-This message occurs as respond to an message with an unkown message type or
-when a message is send in the wrong server connection state.
-
-After this message the server closes the connection.
-
-## PASSWORD_REQUIRED
-
-```c
-struct PasswordRequiredMessage {
-	uint8_t msg_type; /* must be 0xF5 */
-}
-```
-
-This message is the responds to the hello message, when a server password is
-set. After this message the client must respond with the PASSWORD message.
-
-## SETUP_REQUIRED
-
-```c
-struct SetupRequiredMessage {
-	uint8_t msg_type; /* must be 0xF6 */
-}
-```
-
-This message can be a respond the HELLO message or to the PASSWORD message.
-It signals that the server must set up the uinput device.
-The client must send device set up informations (DEVICE or/and ABSINFO
-message(s)). To leave the setup connection state the client must send the
-SETUP_END message.
-
-The client can send this message in success connection state, too. This
-signals that the client has different device informations. The server answers
-with this message and enters the setup connection state.
-
-## CLIENT_SLOT_IN_USE
-
-```c
-struct ClientSlotInUseMessage {
-	uint8_t msg_type; /* must be 0xF7 */
-}
-```
-
-This message occurs as respond to the HELLO message.
-It signals that the request slot is already in use.
-After this message the server closes the connection.
-
-## CLIENT_SLOTS_EXHAUSTED 0xF8
-
-```c
-struct ClientSlotsExhausted {
-	uint8_t msg_type; /* must be 0xF7 */
-}
-```
-
-This message occurs as respond to the HELLO message or direct after
-connection.
-It signals that the server has no slots anymore.
-After this message the server closes the connection.
-
-
-## QUIT
+## The `QUIT` message
 
 ```c
 struct QuitMessage {
@@ -345,10 +279,142 @@ struct QuitMessage {
 ```
 
 The client may send this message to close the connection.
-This should close the uinput device on the server.
-The server closes than the socket.
+The server will destroy the input node on the server and terminate the client connection.
 
-## DEVICE_NOT_ALLOWED
+### Possible responses
+
+Connection termination
+
+### Example
+
+`TODO`
+
+# Server responses
+
+The server responds to commands by the clients using the following response
+messages
+
+## The `SUCCESS` response
+
+```c
+struct SuccessMessage {
+	uint8_t msg_type; /* must be 0xF0 */
+	uint8_t slot;
+}
+```
+
+The client has successfully negotiated or been assigned a device and may now
+send `DATA` messages.
+
+The data part contains
+
+	* (1 Byte) Client slot
+		The slot the client has been assigned.
+		Should the connection be terminated during normal operation,
+		the client may reconnect and be assigned the same input device
+		as before by specifying the slot it had in the previous connection
+		in the `HELLO` message.
+
+## The `VERSION_MISMATCH` response
+
+```c
+struct VersionMismatchMessage {
+	uint8_t msg_type; /* must be 0xF1 */
+	uint8_t version; /* server protocol version */
+}
+```
+
+Sent to indicate that the server does not support the protocol version indicated
+by the clients `HELLO` message. The server will terminate the connection after sending
+this response.
+
+The data part contains
+
+	* (1 Byte) Server version
+		The protocol version spoken by the server
+
+## The `INVALID_PASSWORD` response
+
+```c
+struct InvalidPasswordMessage {
+	uint8_t msg_type; /* must be 0xF2 */
+}
+```
+
+The password used by the client was not recognized by the server.
+
+## The `INVALID_CLIENT_SLOT` response
+
+```c
+struct InvalidClientSlotMessage {
+	uint8_t msg_type; /* must be 0xF3 */
+}
+```
+
+The slot requested by the client in the `HELLO` message was not valid.
+This may occur when the number of client slots is limited on the server.
+The server will terminate the connection after sending this message.
+
+## The `INVALID_MESSAGE` response
+
+```c
+struct InvalidMessage {
+	uint8_t msg_type; /* must be 0xF4 */
+}
+```
+
+The server may send this message at any time to indicate an unexpected command
+by the client.
+
+The server MAY terminate the connection after sending this message.
+
+## The `PASSWORD_REQUIRED` response
+
+```c
+struct PasswordRequiredMessage {
+	uint8_t msg_type; /* must be 0xF5 */
+}
+```
+
+This message indicates to the client that a `PASSWORD` command is required to proceed.
+
+## The `SETUP_REQUIRED` response
+
+```c
+struct SetupRequiredMessage {
+	uint8_t msg_type; /* must be 0xF6 */
+}
+```
+
+This message indicates to the client that a `DEVICE` command is required to proceed.
+
+This response may also be sent by the client when device setup has already successfully
+completed, prompting the server to destroy the old input device and wait for a new
+`DEVICE`/`ABSINFO` exchange after answering with this same message.
+
+## The `CLIENT_SLOT_IN_USE` response
+
+```c
+struct ClientSlotInUseMessage {
+	uint8_t msg_type; /* must be 0xF7 */
+}
+```
+
+The slot requested by the clients `HELLO` message is already in use.
+The server may terminate the connection after sending this response.
+
+## The `CLIENT_SLOTS_EXHAUSTED` response
+
+```c
+struct ClientSlotsExhausted {
+	uint8_t msg_type; /* must be 0xF8 */
+}
+```
+
+Indicates to the client that the server can not accept any new clients at this time.
+The server will terminate the connection after sending this response.
+
+## The `DEVICE_NOT_ALLOWED` response
 
 ```c
 struct DeviceNotAllowedMessage {
@@ -356,6 +422,6 @@ struct DeviceNotAllowedMessage {
 }
 ```
 
-This messages occurs after the SETUP END message.
-It signals that the request device type is not allowed on the server.
-After this message the server closes the connection.
+This response indicates to the client that the chosen device capabilities are prohibited
+on the server.
+The server will terminate the connection after sending this response.
