@@ -33,8 +33,8 @@ When installed, this component will be available as `input-client`
 
 ## Build prerequisites
 
-In addition to a working C compiler and make, the package `libevdev-dev` (debian) is required
-to build the project.
+A working C compiler and make. The server needs the uinput subsytem to work and the (linux/uinput.h).
+The client and the server needs the linux/input.h header file.
 
 ## Build
 
@@ -51,10 +51,10 @@ To install only one component, run `make install-server` or `make install-client
 ### Server
 
 Run the server by starting `input-server`. By default, the server listens on `::` port `9292`.
-These settings can be overridden by specifying the environment variables `SERVER_HOST` and `SERVER_PORT`.
+These settings can be overridden by specifying the environment variables `SERVER_HOST` and `SERVER_PORT` or the corresponding command line arguments.
 
 To connect to the server, users need to provide a password. The default password is `foobar`.
-It may be overridden by specifying the environment variable `SERVER_PW`.
+It may be overridden by specifying the environment variable `SERVER_PW` or the corresponding command line argument.
 
 ### Client
 
@@ -65,7 +65,7 @@ To test whether a device node is the one you want, run `cat /dev/input/path/to/n
 Each keypress should print some seemingly random data.
 
 Having found your device node, run `input-client [-t <type>] /dev/input/path/to/input/node`, while specifying the following
-parameters via environment variables:
+parameters via environment variables or command line arguments:
 
 * `SERVER_HOST`: The host to connect to (Default: `::`)
 * `SERVER_PORT`: The port to connect to (Default `9292`)
@@ -76,8 +76,11 @@ Type can be one of the following:
 * `mouse`: a mouse device
 * `keyboard`: a keyboard device
 * `gamepad`: a gamepad device
+* `xbox`: the xbox controller
+* `abs`: abs inputs
 
-If the type is not specified the default type is used. Not defining a device type is not recommended.
+If the type is not specified the default type is used. It enables all device types. Not defining a device type is not recommended.
+Device types can be accumulated (Example: mouse and keyboard in one device: -t mouse -t keyboard).
 
 While the client is running (and after it has successfully connected), input events generated should take effect
 on the computer running the server.
