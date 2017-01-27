@@ -93,7 +93,7 @@ bool create_device(LOGGER log, gamepad_client* client, struct device_meta* meta)
 	}
 	struct uinput_user_dev dev = {};
 	memset(&dev, 0, sizeof(dev));
-	strncpy(dev.name, meta->name, UINPUT_MAX_NAME_SIZE);
+	strncpy(dev.name, meta->name, UINPUT_MAX_NAME_SIZE - 1);
 	memcpy(&dev.id, &meta->id, sizeof(struct input_id));
 	memcpy(&dev.absmax, &meta->absmax, ABS_CNT * sizeof(__s32));
 	memcpy(&dev.absmin, &meta->absmin, ABS_CNT * sizeof(__s32));
