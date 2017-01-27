@@ -145,6 +145,7 @@ bool init_connect(int sock_fd, int device_fd, Config* config) {
 		strncpy(passwordMessage->password, config->password, pwlen);
 
 		if (!send_message(config->log, sock_fd, passwordMessage, 2 + pwlen)) {
+			free(passwordMessage);
 			return false;
 		}
 		free(passwordMessage);
