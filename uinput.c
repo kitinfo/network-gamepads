@@ -84,6 +84,9 @@ void init_abs_info(struct device_meta* meta) {
 
 bool create_device(LOGGER log, gamepad_client* client, struct device_meta* meta) {
 	int uinput_fd = open_uinput();
+	if (uinput_fd < 0) {
+		return false;
+	}
 	if (!enable_device_keys(log, uinput_fd, meta)) {
 		close(uinput_fd);
 		return false;
