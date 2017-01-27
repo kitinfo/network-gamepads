@@ -64,14 +64,15 @@ struct HelloMessage {
 The HELLO message must be the first message sent on a newly created connection.
 
 Its data part contains
-	* (1 Byte) Protocol version
-		This field is used to negotiate the feature set to be supported
-	* (1 Byte) Requested client slot
-		The client slot to be acquired for this client.
-		Reconnecting to a client slot previously occupied keeps the
-		evdev device intact. A client slot may be assigned to only
-		one client. A special value of `0` indicates that the server
-		should randomly assign the client a slot.
+
+* (1 Byte) Protocol version
+	This field is used to negotiate the feature set to be supported
+* (1 Byte) Requested client slot
+	The client slot to be acquired for this client.
+	Reconnecting to a client slot previously occupied keeps the
+	evdev device intact. A client slot may be assigned to only
+	one client. A special value of `0` indicates that the server
+	should randomly assign the client a slot.
 
 
 ### Possible responses
@@ -116,10 +117,10 @@ This message must be sent in response to a `PASSWORD_REQUIRED` message from the 
 
 The data part consists of
 
-	* (1 Byte) Password length
-		The length (excluding any terminating characters) of the connection password
-	* (`length` Bytes) The password
-		Note that the password need not be ASCII, but ease-of-use recommends it
+* (1 Byte) Password length
+	The length (excluding any terminating characters) of the connection password
+* (`length` Bytes) The password
+	Note that the password need not be ASCII, but ease-of-use recommends it
 
 ### Possible responses
 
@@ -157,18 +158,18 @@ It contains data used for creating the input device on the server.
 
 The data part is as follows
 
-	* (1 Byte) Name length
-		The length of the data in the `name` field. Must not exceed
-		`UINPUT_MAX_NAME_SIZE` bytes
-	* (8 Bytes) Device type
-		The type of device to register on the server. This allows usage
-		of different sets of input controls. See the `Device types` table
-		for detailed information
-	* (??? Bytes) Input device data structure
-		Extended information about the device to emulate on the server
-		`TODO Extend this`
-	* (`length` Bytes) Device name
-		The name that will be displayed for this X input device
+* (1 Byte) Name length
+	The length of the data in the `name` field. Must not exceed
+	`UINPUT_MAX_NAME_SIZE` bytes
+* (8 Bytes) Device type
+	The type of device to register on the server. This allows usage
+	of different sets of input controls. See the `Device types` table
+	for detailed information
+* (??? Bytes) Input device data structure
+	Extended information about the device to emulate on the server
+	`TODO Extend this`
+* (`length` Bytes) Device name
+	The name that will be displayed for this X input device
 
 The `DEVICE` message may optionally be followed by one or more `ABSINFO` messages.
 
@@ -211,9 +212,9 @@ The client should send this message for every absolute axis of the device it wan
 
 The data part consists of
 
-	* (1 Byte) Axis identifier
-		See linux/input.h for all available axes (ABS_*)
-	* (??? Bytes) `absinfo` structure (see `linux/input.h`)
+* (1 Byte) Axis identifier
+	See linux/input.h for all available axes (ABS_*)
+* (??? Bytes) `absinfo` structure (see `linux/input.h`)
 
 ### Possible responses
 
@@ -254,10 +255,10 @@ according to the deivce type configured in the `DEVICE` message.
 
 The data part consists of
 
-	* (??? Bytes) Input event struct
-		See `linux/input.h` for details
-		The timestamp member of the structure must be constrained to 16bits
-		to match the format expected on the server.
+* (??? Bytes) Input event struct
+	See `linux/input.h` for details
+	The timestamp member of the structure must be constrained to 16bits
+	to match the format expected on the server.
 
 ### Possible responses
 
@@ -308,12 +309,12 @@ send `DATA` messages.
 
 The data part contains
 
-	* (1 Byte) Client slot
-		The slot the client has been assigned.
-		Should the connection be terminated during normal operation,
-		the client may reconnect and be assigned the same input device
-		as before by specifying the slot it had in the previous connection
-		in the `HELLO` message.
+* (1 Byte) Client slot
+	The slot the client has been assigned.
+	Should the connection be terminated during normal operation,
+	the client may reconnect and be assigned the same input device
+	as before by specifying the slot it had in the previous connection
+	in the `HELLO` message.
 
 ## The `VERSION_MISMATCH` response
 
@@ -330,8 +331,8 @@ this response.
 
 The data part contains
 
-	* (1 Byte) Server version
-		The protocol version spoken by the server
+* (1 Byte) Server version
+	The protocol version spoken by the server
 
 ## The `INVALID_PASSWORD` response
 
