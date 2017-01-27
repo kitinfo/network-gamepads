@@ -223,6 +223,7 @@ int set_slot(int argc, char** argv, Config* config) {
 		return -1;
 	}
 
+	logprintf(config->log, LOG_INFO, "slot: %d\n");
 	config->slot = value;
 
 	return 1;

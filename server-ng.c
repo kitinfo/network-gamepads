@@ -97,7 +97,7 @@ bool client_hello(Config* config, gamepad_client* client, uint8_t slot) {
 
 	logprintf(config->log, LOG_DEBUG, "waiting slot %d: slot requested: %d\n", slot, msg->slot);
 	if (msg->slot > 0) {
-		if (msg->slot - 1 > MAX_CLIENTS) {
+		if (msg->slot > MAX_CLIENTS) {
 			ret = MESSAGE_INVALID_CLIENT_SLOT;
 			logprintf(config->log, LOG_WARNING, "waiting slot %d: invalid client slot: %d\n", slot, msg->slot);
 		} else if (clients[msg->slot - 1].fd > 0) {
@@ -602,7 +602,10 @@ int main(int argc, char** argv) {
 						continue;
 					}
 					logprintf(config.log, LOG_DEBUG, "waiting slot %d: handle hello\n", u);
-					client_hello(&config, waiting_clients + u, u);
+					if (!client_hello(&config, waiting_clients + u, u)) {
+						waiting_clients[u].bytes_available = 0;
+						waiting_clients[u].scan_offset = 0;
+					}
 				}
 			}
 		}
