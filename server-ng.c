@@ -52,6 +52,9 @@ bool client_connection(Config* config, int listener, gamepad_client waiting_queu
 	if(client_ident == MAX_WAITING_CLIENTS){
 		logprintf(config->log, LOG_ERROR, "Client slots exhausted, turning connection away\n");
 		int fd = accept(listener, NULL, NULL);
+		if (fd < 0) {
+			return false;
+		}
 		uint8_t err = MESSAGE_CLIENT_SLOTS_EXHAUSTED;
 		send_message(config->log, fd, &err, 1);
 		close(fd);
