@@ -71,6 +71,7 @@ bool setup_device(int sock_fd, int device_fd, Config* config) {
 
 	if (ioctl(device_fd, EVIOCGID, &ids) < 0) {
 		logprintf(config->log, LOG_ERROR, "Cannot query device ids: %s\n", strerror(errno));
+		free(msg);
 		return false;
 	}
 
@@ -81,11 +82,13 @@ bool setup_device(int sock_fd, int device_fd, Config* config) {
 
 	if (ioctl(device_fd, EVIOCGNAME(UINPUT_MAX_NAME_SIZE - 1), msg->name) < 0) {
 		logprintf(config->log, LOG_ERROR, "Cannot query device name: %s\n", strerror(errno));
+		free(msg);
 		return false;
 	}
 
 	logprintf(config->log, LOG_DEBUG, "send setup device message.\n");
 	if (!send_message(config->log, sock_fd, msg, msglen)) {
+		free(msg);
 		return false;
 	}
 
@@ -240,7 +243,7 @@ int device_reopen(LOGGER log, char* file) {
 
 	while (!quit_signal) {
 		fd = open(file, O_RDONLY);
-		if (fd > 0) {
+		if (fd >= 0) {
 			return fd;
 		}
 		logprintf(log, LOG_ERROR, "Cannot reconnect to device. Waiting for 1 seconds.\n");
