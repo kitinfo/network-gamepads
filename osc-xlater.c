@@ -87,6 +87,11 @@ int osc_parse(char* buffer, size_t len, char** path, unsigned* num_args, uint8_t
 	char* param_str;
 	char* data_off;
 
+	if(!memchr(buffer, 0, len)){
+		fprintf(stderr, "Unterminated path in OSC message\n");
+		return -1;
+	}
+
 	param_str = buffer + nextdword(strlen(buffer) + 1);
 	data_off = param_str + nextdword(strlen(param_str) + 1);
 
@@ -139,12 +144,13 @@ int input_negotiate(int fd, char* devname, char* password){
 		printf("version mismatch: %.2x (client) != %.2x (server)\n", PROTOCOL_VERSION, buf[1]);
 		return -1;
 	} else if (buf[0] == MESSAGE_PASSWORD_REQUIRED) {
-		PasswordMessage* pw_msg = malloc(sizeof(PasswordMessage) + strlen(password) + 1);
+		PasswordMessage* pw_msg = calloc(sizeof(PasswordMessage) + strlen(password) + 1, sizeof(char));
 		pw_msg->msg_type = MESSAGE_PASSWORD;
 		pw_msg->length = strlen(password) + 1;
 		strncpy(pw_msg->password, password, pw_msg->length);
 
 		send(fd, pw_msg, sizeof(PasswordMessage) + pw_msg->length, 0);
+		free(pw_msg);
 
 		bytes = recv(fd, buf, sizeof(buf), 0);
 		if (bytes < 1) {
@@ -159,13 +165,14 @@ int input_negotiate(int fd, char* devname, char* password){
 	}
 
 	if (buf[0] == MESSAGE_SETUP_REQUIRED) {
-		DeviceMessage* dev_msg = malloc(sizeof(DeviceMessage) + strlen(devname) + 1);
+		DeviceMessage* dev_msg = calloc(sizeof(DeviceMessage) + strlen(devname) + 1, sizeof(char));
 		dev_msg->msg_type = MESSAGE_DEVICE;
 		dev_msg->length = strlen(devname) + 1;
 		dev_msg->type = 2;
 		strncpy(dev_msg->name, devname, dev_msg->length);
 
 		send(fd, dev_msg, sizeof(DeviceMessage) + dev_msg->length, 0);
+		free(dev_msg);
 
 		uint8_t setup_end = MESSAGE_SETUP_END;
 		send(fd, &setup_end, sizeof(uint8_t), 0);
