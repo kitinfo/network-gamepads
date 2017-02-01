@@ -24,7 +24,7 @@ bool send_message(LOGGER log, int sock_fd, void* data, unsigned len) {
 			logprintf(log, LOG_ERROR, "Cannot send data: %s", strerror(errno));
 			return false;
 		}
-		logprintf(log, LOG_DEBUG, "%d bytes sended\n", status);
+		logprintf(log, LOG_DEBUG, "%d bytes sent\n", status);
 
 		bytes -= status;
 		data += status;
