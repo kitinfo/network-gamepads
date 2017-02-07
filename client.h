@@ -9,4 +9,5 @@ typedef struct {
 	char* port;
 	uint64_t type;
 	uint8_t slot;
+	bool no_reopen;
 } Config;

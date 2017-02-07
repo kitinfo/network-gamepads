@@ -205,13 +205,15 @@ int setType(int argc, char** argv, Config* config) {
 int usage(int argc, char** argv, Config* config) {
 	printf("%s usage:\n"
 			"%s [<options>] <device>\n"
-			"    -c, --continue <slot> - tries to continue a connection with the given slot.\n"
-			"                            The slot must be between 1 and 255.\n"
-			"    -h, --host            - set the host\n"
-			"    -?, --help            - this help\n"
-			"    -p, --port            - set the port\n"
-			"    -t, --type            - type of the device (this should be set)\n"
-			"    -v, --verbosity       - set the verbosity (from 0: ERROR to 5: DEBUG)\n"
+			"    -c, --continue <slot>   - tries to continue a connection with the given slot.\n"
+			"                              The slot must be between 1 and 255.\n"
+			"    -h, --host <host>       - set the host\n"
+			"    -?, --help              - this help\n"
+			"    -nr,--no_reopen         - don't reopen device when closed.\n"
+			"    -p, --port              - set the port\n"
+			"    -pw,--password <pw>     - Sets the password\n"
+			"    -t, --type <type>       - type of the device (this should be set)\n"
+			"    -v, --verbosity <level> - set the verbosity (from 0: ERROR to 5: DEBUG)\n"
 			,config->program_name, config->program_name);
 	return -1;
 }
@@ -238,21 +240,26 @@ void add_arguments(Config* config) {
 	eargs_addArgumentString("-pw", "--password", &config->password);
 	eargs_addArgumentUInt("-v", "--verbosity", &config->log.verbosity);
 	eargs_addArgument("-c", "--continue", set_slot, 1);
+	eargs_addArgumentFlag("-nr", "--no-reopen", &config->no_reopen);
 }
 
-int device_reopen(LOGGER log, char* file) {
+int device_reopen(Config* config, char* file) {
 	int fd = -1;
+
+	if (config->no_reopen) {
+		return -1;
+	}
 
 	while (!quit_signal) {
 		fd = open(file, O_RDONLY);
 		if (fd >= 0) {
 			return fd;
 		}
-		logprintf(log, LOG_ERROR, "Cannot reconnect to device. Waiting for 1 seconds.\n");
+		logprintf(config->log, LOG_ERROR, "Cannot reconnect to device. Waiting for 1 seconds.\n");
 		sleep(1);
 	}
 
-	logprintf(log, LOG_ERROR, "User signal. Quitting...\n");
+	logprintf(config->log, LOG_ERROR, "User signal. Quitting...\n");
 	return -1;
 }
 
@@ -330,8 +337,7 @@ int main(int argc, char** argv){
 		if(bytes < 0) {
 			logprintf(config.log, LOG_ERROR, "read() error: %s\nTrying to reconnect.\n", strerror(errno));
 			close(event_fd);
-			event_fd = device_reopen(config.log, output[0]);
-
+			event_fd = device_reopen(&config, output[0]);
 			if (event_fd < 0) {
 				break;
 			} else {
