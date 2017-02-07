@@ -209,7 +209,7 @@ int usage(int argc, char** argv, Config* config) {
 			"                              The slot must be between 1 and 255.\n"
 			"    -h, --host <host>       - set the host\n"
 			"    -?, --help              - this help\n"
-			"    -nr,--no_reopen         - don't reopen device when closed.\n"
+			"    -r,--reopen <x>         - Try to reopen device for x seconds. -1 means try forever.\n"
 			"    -p, --port              - set the port\n"
 			"    -pw,--password <pw>     - Sets the password\n"
 			"    -t, --type <type>       - type of the device (this should be set)\n"
@@ -240,23 +240,23 @@ void add_arguments(Config* config) {
 	eargs_addArgumentString("-pw", "--password", &config->password);
 	eargs_addArgumentUInt("-v", "--verbosity", &config->log.verbosity);
 	eargs_addArgument("-c", "--continue", set_slot, 1);
-	eargs_addArgumentFlag("-nr", "--no-reopen", &config->no_reopen);
+	eargs_addArgumentInt("-r", "--reopen", &config->reopen_attempts);
 }
 
 int device_reopen(Config* config, char* file) {
 	int fd = -1;
 
-	if (config->no_reopen) {
-		return -1;
-	}
+	int counter = config->reopen_attempts;
 
-	while (!quit_signal) {
+	while (!quit_signal && counter != 0) {
 		fd = open(file, O_RDONLY);
 		if (fd >= 0) {
 			return fd;
 		}
 		logprintf(config->log, LOG_ERROR, "Cannot reconnect to device. Waiting for 1 seconds.\n");
 		sleep(1);
+
+		counter--;
 	}
 
 	logprintf(config->log, LOG_ERROR, "User signal. Quitting...\n");
