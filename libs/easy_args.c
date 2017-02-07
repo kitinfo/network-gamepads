@@ -67,7 +67,7 @@ int eargs_addArgumentInt(char* argShort, char* argLong, int* container) {
 	return eargs_addArgumentElem(argShort, argLong, (void*) container, 1, TYPE_INT);
 }
 
-int eargs_addArgument(char* argShort, char* argLong, easy_args_func func, unsigned arguments) {
+int eargs_addArgument(char* argShort, char* argLong, void* func, unsigned arguments) {
 	return eargs_addArgumentElem(argShort, argLong, func, arguments, TYPE_FUNC);
 }
 
