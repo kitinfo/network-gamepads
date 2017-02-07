@@ -501,7 +501,7 @@ int main(int argc, char** argv) {
 		.program_name = argv[0],
 		.log = {
 			.stream = stderr,
-			.verbosity = 5
+			.verbosity = 0
 		},
 		.limit = 0,
 		.bindhost = getenv("SERVER_HOST") ? getenv("SERVER_HOST"):DEFAULT_HOST,

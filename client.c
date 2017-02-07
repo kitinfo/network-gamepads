@@ -275,7 +275,7 @@ int main(int argc, char** argv){
 	Config config = {
 		.log = {
 			.stream = stderr,
-			.verbosity = 5
+			.verbosity = 0
 		},
 		.program_name = argv[0],
 		.host = getenv("SERVER_HOST") ? getenv("SERVER_HOST"):DEFAULT_HOST,
