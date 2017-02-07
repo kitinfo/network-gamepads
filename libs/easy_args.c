@@ -3,6 +3,8 @@
 #include <string.h>
 #include <stdbool.h>
 
+#include "easy_args.h"
+
 typedef enum ARG_TYPE {
 	TYPE_INT,
 	TYPE_UINT,
@@ -65,7 +67,7 @@ int eargs_addArgumentInt(char* argShort, char* argLong, int* container) {
 	return eargs_addArgumentElem(argShort, argLong, (void*) container, 1, TYPE_INT);
 }
 
-int eargs_addArgument(char* argShort, char* argLong, void* func, unsigned arguments) {
+int eargs_addArgument(char* argShort, char* argLong, easy_args_func func, unsigned arguments) {
 	return eargs_addArgumentElem(argShort, argLong, func, arguments, TYPE_FUNC);
 }
 
@@ -95,46 +97,41 @@ int eargs_clear() {
 	return 1;
 }
 
-bool eargs_handle_string(struct ArgumentItem* item, int argc, char** cmds, void* config) {
+int eargs_handle_string(struct ArgumentItem* item, int argc, char** cmds, void* config) {
 	char** container = (char**) item->func;
 	*container = cmds[1];
 
-	return true;
+	return 1;
 }
 
-bool eargs_handle_flag(struct ArgumentItem* item, int argc, char** cmds, void* config) {
+int eargs_handle_flag(struct ArgumentItem* item, int argc, char** cmds, void* config) {
 	bool* container = (bool*) item->func;
 	*container = true;
 
-	return true;
+	return 0;
 }
 
-bool eargs_handle_int(struct ArgumentItem* item, int argc, char** cmds, void* config) {
+int eargs_handle_int(struct ArgumentItem* item, int argc, char** cmds, void* config) {
 	int* container = (int*) item->func;
 	*container = strtol(cmds[1], NULL, 10);
 
-	return true;
+	return 1;
 }
 
-bool eargs_handle_uint(struct ArgumentItem* item, int argc, char** cmds, void* config) {
+int eargs_handle_uint(struct ArgumentItem* item, int argc, char** cmds, void* config) {
 	unsigned* container = (unsigned*) item->func;
 	*container = strtoul(cmds[1], NULL, 10);
 
-	return true;
+	return 1;
 }
 
-bool eargs_handle_func(struct ArgumentItem* item, int argc, char** cmds, void* config) {
+int eargs_handle_func(struct ArgumentItem* item, int argc, char** cmds, void* config) {
 	// call function
 	int (*p)(int argc, char** argv, void* config) = item->func;
-	if (p(argc, cmds, config) < 0) {
-		// error in function (bad input?)
-		return false;
-	}
-
-	return true;
+	return p(argc, cmds, config);
 }
 
-bool eargs_action(struct ArgumentItem* item, int argc, char** cmds, void* config) {
+int eargs_action(struct ArgumentItem* item, int argc, char** cmds, void* config) {
 
 	switch(item->type) {
 		case TYPE_INT:
@@ -149,7 +146,7 @@ bool eargs_action(struct ArgumentItem* item, int argc, char** cmds, void* config
 			return eargs_handle_string(item, argc, cmds, config);
 		default:
 			printf("type not implemented.\n");
-			return false;
+			return -1;
 	}
 }
 
@@ -172,6 +169,8 @@ int eargs_parseItem(int argc, char** cmds, void* config) {
 				arg = eargs_action(item, argc, cmds, config);
 				if (arg < 0) {
 					return -2;
+				} else {
+					return arg;
 				}
 			} else {
 				printf("(%s,%s) needs an argument.", item->argShort,item->argLong);
