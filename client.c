@@ -251,6 +251,13 @@ int device_reopen(Config* config, char* file) {
 	while (!quit_signal && counter != 0) {
 		fd = open(file, O_RDONLY);
 		if (fd >= 0) {
+			//get exclusive control
+			int grab = 1;
+ 			if (ioctl(fd, EVIOCGRAB, &grab) < 0) {
+				logprintf(config->log, LOG_WARNING, "Cannot get exclusive access on device: %s\n", strerror(errno));
+				close(fd);
+				return -1;
+			}
 			return fd;
 		}
 		logprintf(config->log, LOG_ERROR, "Cannot reconnect to device. Waiting for 1 seconds.\n");
