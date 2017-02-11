@@ -80,10 +80,15 @@ bool setup_device(int sock_fd, int device_fd, Config* config) {
 	msg->id_product = htobe16(ids.product);
 	msg->id_version = htobe16(ids.version);
 
-	if (ioctl(device_fd, EVIOCGNAME(UINPUT_MAX_NAME_SIZE - 1), msg->name) < 0) {
-		logprintf(config->log, LOG_ERROR, "Cannot query device name: %s\n", strerror(errno));
-		free(msg);
-		return false;
+	if (config->dev_name) {
+		strncpy(msg->name, config->dev_name, UINPUT_MAX_NAME_SIZE);
+		msg->name[UINPUT_MAX_NAME_SIZE - 1] = 0;
+	} else {
+		if (ioctl(device_fd, EVIOCGNAME(UINPUT_MAX_NAME_SIZE - 1), msg->name) < 0) {
+			logprintf(config->log, LOG_ERROR, "Cannot query device name: %s\n", strerror(errno));
+			free(msg);
+			return false;
+		}
 	}
 
 	logprintf(config->log, LOG_DEBUG, "send setup device message.\n");
@@ -236,6 +241,7 @@ void add_arguments(Config* config) {
 	eargs_addArgument("-t", "--type", setType, 1);
 	eargs_addArgument("-?", "--help", usage, 0);
 	eargs_addArgumentString("-h", "--host", &config->host);
+	eargs_addArgumentString("-n", "--name", &config->dev_name);
 	eargs_addArgumentString("-p", "--port", &config->port);
 	eargs_addArgumentString("-pw", "--password", &config->password);
 	eargs_addArgumentUInt("-v", "--verbosity", &config->log.verbosity);
@@ -278,6 +284,7 @@ int main(int argc, char** argv){
 			.verbosity = 0
 		},
 		.program_name = argv[0],
+		.dev_name = NULL,
 		.host = getenv("SERVER_HOST") ? getenv("SERVER_HOST"):DEFAULT_HOST,
 		.password = getenv("SERVER_PW") ? getenv("SERVER_PW"):DEFAULT_PASSWORD,
 		.port = getenv("SERVER_PORT") ? getenv("SERVER_PORT"):DEFAULT_PORT,
