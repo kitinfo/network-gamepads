@@ -385,6 +385,8 @@ int main(int argc, char** argv){
 		close(event_fd);
 	}
 	if (sock_fd != -1) {
+		uint8_t quit_msg = MESSAGE_QUIT;
+		send_message(config.log, sock_fd, &quit_msg, sizeof(quit_msg));
 		close(sock_fd);
 	}
 
