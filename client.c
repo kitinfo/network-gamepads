@@ -210,15 +210,15 @@ int setType(int argc, char** argv, Config* config) {
 int usage(int argc, char** argv, Config* config) {
 	printf("%s usage:\n"
 			"%s [<options>] <device>\n"
-			"    -c, --continue <slot>   - tries to continue a connection with the given slot.\n"
-			"                              The slot must be between 1 and 255.\n"
-			"    -h, --host <host>       - set the host\n"
-			"    -?, --help              - this help\n"
-			"    -r,--reopen <x>         - Try to reopen device for x seconds. -1 means try forever.\n"
-			"    -p, --port              - set the port\n"
-			"    -pw,--password <pw>     - Sets the password\n"
-			"    -t, --type <type>       - type of the device (this should be set)\n"
-			"    -v, --verbosity <level> - set the verbosity (from 0: ERROR to 5: DEBUG)\n"
+			"    -c, --continue <slot>   - Request connection continuation on a given slot (1-255)\n"
+			"    -h, --host <host>       - Specify host to connect to\n"
+			"    -?, --help              - Display this help text\n"
+			"    -r,--reopen <x>         - Try to reopen device for x seconds after it disconnects (-1 retries indefinitely)\n"
+			"    -p, --port              - Specify InputServer port\n"
+			"    -n, --name              - Specify a name for mapping on the server\n"
+			"    -pw,--password <pw>     - Set a connection password\n"
+			"    -t, --type <type>       - Device type (required)\n"
+			"    -v, --verbosity <level> - Debug verbosity (0: ERROR to 5: DEBUG)\n"
 			,config->program_name, config->program_name);
 	return -1;
 }
