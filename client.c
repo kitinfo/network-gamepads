@@ -23,7 +23,7 @@ sig_atomic_t quit_signal = false;
 
 bool get_abs_info(Config* config, int device_fd, int abs, struct input_absinfo* info) {
 	if (ioctl(device_fd, EVIOCGABS(abs), info)) {
-		logprintf(config->log, LOG_INFO, "ABS (%d) not found.\n", abs);
+		logprintf(config->log, LOG_INFO, "Failed to find absolute axis %d\n", abs);
 		return false;
 	}
 	return true;
@@ -53,8 +53,7 @@ bool send_abs_info(int sock_fd, int device_fd, Config* config) {
 		}
 	}
 
-	logprintf(config->log, LOG_DEBUG, "Finished with ABSInfo\n");
-
+	logprintf(config->log, LOG_DEBUG, "Absolute axes synchronized\n");
 	return true;
 }
 
@@ -70,7 +69,7 @@ bool setup_device(int sock_fd, int device_fd, Config* config) {
 	struct input_id ids;
 
 	if (ioctl(device_fd, EVIOCGID, &ids) < 0) {
-		logprintf(config->log, LOG_ERROR, "Cannot query device ids: %s\n", strerror(errno));
+		logprintf(config->log, LOG_ERROR, "Failed to query device ID: %s\n", strerror(errno));
 		free(msg);
 		return false;
 	}
@@ -85,13 +84,13 @@ bool setup_device(int sock_fd, int device_fd, Config* config) {
 		msg->name[UINPUT_MAX_NAME_SIZE - 1] = 0;
 	} else {
 		if (ioctl(device_fd, EVIOCGNAME(UINPUT_MAX_NAME_SIZE - 1), msg->name) < 0) {
-			logprintf(config->log, LOG_ERROR, "Cannot query device name: %s\n", strerror(errno));
+			logprintf(config->log, LOG_ERROR, "Failed to query device name: %s\n", strerror(errno));
 			free(msg);
 			return false;
 		}
 	}
 
-	logprintf(config->log, LOG_DEBUG, "send setup device message.\n");
+	logprintf(config->log, LOG_DEBUG, "Initiating SETUP\n");
 	if (!send_message(config->log, sock_fd, msg, msglen)) {
 		free(msg);
 		return false;
@@ -111,8 +110,7 @@ bool setup_device(int sock_fd, int device_fd, Config* config) {
 }
 
 bool init_connect(int sock_fd, int device_fd, Config* config) {
-
-	logprintf(config->log, LOG_INFO, "Try to connect to host\n");
+	logprintf(config->log, LOG_INFO, "Connecting...\n");
 
 	uint8_t buf[INPUT_BUFFER_SIZE];
 	ssize_t recv_bytes;
@@ -133,14 +131,14 @@ bool init_connect(int sock_fd, int device_fd, Config* config) {
 		return false;
 	}
 
-	logprintf(config->log, LOG_DEBUG, "msg_type received: %s\n", get_message_name(buf[0]));
+	logprintf(config->log, LOG_DEBUG, "Received message type: %s\n", get_message_name(buf[0]));
 
 	// check version
 	if (buf[0] == MESSAGE_VERSION_MISMATCH) {
-		logprintf(config->log, LOG_ERROR, "Version mismatch: %.2x (client) != %.2x (server)\n", PROTOCOL_VERSION, buf[1]);
+		logprintf(config->log, LOG_ERROR, "Version mismatch: %.2x (client) incompatible to %.2x (server)\n", PROTOCOL_VERSION, buf[1]);
 		return false;
 	} else if (buf[0] == MESSAGE_PASSWORD_REQUIRED) {
-		logprintf(config->log, LOG_INFO, "password is required\n");
+		logprintf(config->log, LOG_INFO, "Exchanging authentication...\n");
 		int pwlen = strlen(config->password) + 1;
 		// msg_type byte + length byte + pwlen
 		PasswordMessage* passwordMessage = malloc(2 + pwlen);
@@ -159,11 +157,11 @@ bool init_connect(int sock_fd, int device_fd, Config* config) {
 		if (recv_bytes < 0) {
 			return false;
 		}
-		logprintf(config->log, LOG_DEBUG, "msg_type received: 0x%.2x\n", buf[0]);
+		logprintf(config->log, LOG_DEBUG, "Received message type: 0x%.2x\n", buf[0]);
 	}
 
 	if (buf[0] == MESSAGE_SETUP_REQUIRED) {
-		logprintf(config->log, LOG_INFO, "setup device\n");
+		logprintf(config->log, LOG_INFO, "Setup requested by server\n");
 		if (!setup_device(sock_fd, device_fd, config)) {
 			return false;
 		}
@@ -175,11 +173,11 @@ bool init_connect(int sock_fd, int device_fd, Config* config) {
 	}
 
 	if (buf[0] != MESSAGE_SUCCESS) {
-		logprintf(config->log, LOG_ERROR, "message type is not success (was: %.2x)\n", buf[0]);
+		logprintf(config->log, LOG_ERROR, "Connection failed, last message: %.2x\n", buf[0]);
 		return false;
 	}
 
-	logprintf(config->log, LOG_INFO, "We are slot: %d\n", buf[1]);
+	logprintf(config->log, LOG_INFO, "Connected to slot: %d\n", buf[1]);
 	config->slot = buf[1];
 
 	return true;
@@ -227,11 +225,11 @@ int set_slot(int argc, char** argv, Config* config) {
 	unsigned value = strtoul(argv[1], NULL, 10);
 
 	if (value > 255 || value == 0) {
-		logprintf(config->log, LOG_ERROR, "Slot must be between 1 and 255.\n");
+		logprintf(config->log, LOG_ERROR, "Connection slot range exceeded, required to be in range 1-255\n");
 		return -1;
 	}
 
-	logprintf(config->log, LOG_INFO, "slot: %d\n");
+	logprintf(config->log, LOG_INFO, "Selected connection slot %d\n");
 	config->slot = value;
 
 	return 1;
@@ -260,19 +258,19 @@ int device_reopen(Config* config, char* file) {
 			//get exclusive control
 			int grab = 1;
  			if (ioctl(fd, EVIOCGRAB, &grab) < 0) {
-				logprintf(config->log, LOG_WARNING, "Cannot get exclusive access on device: %s\n", strerror(errno));
+				logprintf(config->log, LOG_WARNING, "Failed to request exclusive access to device: %s\n", strerror(errno));
 				close(fd);
 				return -1;
 			}
 			return fd;
 		}
-		logprintf(config->log, LOG_ERROR, "Cannot reconnect to device. Waiting for 1 seconds.\n");
+		logprintf(config->log, LOG_ERROR, "Failed to reconnect, waiting...\n");
 		sleep(1);
 
 		counter--;
 	}
 
-	logprintf(config->log, LOG_ERROR, "User signal. Quitting...\n");
+	logprintf(config->log, LOG_ERROR, "User signal, terminating\n");
 	return -1;
 }
 
@@ -303,7 +301,7 @@ int main(int argc, char** argv){
 	int outputc = eargs_parse(argc, argv, output, &config);
 
 	if(outputc < 1){
-		logprintf(config.log, LOG_ERROR, "Insufficient arguments\n");
+		logprintf(config.log, LOG_ERROR, "Missing arguments\n");
 		return EXIT_FAILURE;
 	}
 
@@ -339,7 +337,7 @@ int main(int argc, char** argv){
 	//get exclusive control
 	int grab = 1;
  	if (ioctl(event_fd, EVIOCGRAB, &grab) < 0) {
-		logprintf(config.log, LOG_WARNING, "Cannot get exclusive access on device: %s\n", strerror(errno));
+		logprintf(config.log, LOG_WARNING, "Failed to request exclusive access to device: %s\n", strerror(errno));
 		close(event_fd);
 		close(sock_fd);
 		return 4;
@@ -349,7 +347,7 @@ int main(int argc, char** argv){
 		//block on read
 		bytes = read(event_fd, &event, sizeof(event));
 		if(bytes < 0) {
-			logprintf(config.log, LOG_ERROR, "read() error: %s\nTrying to reconnect.\n", strerror(errno));
+			logprintf(config.log, LOG_ERROR, "read() failed: %s\nReconnecting...\n", strerror(errno));
 			close(event_fd);
 			event_fd = device_reopen(&config, output[0]);
 			if (event_fd < 0) {
@@ -369,11 +367,11 @@ int main(int argc, char** argv){
 				//check if connection is closed
 				if(errno == ECONNRESET || errno == EPIPE) {
 					if (!init_connect(sock_fd, event_fd, &config)) {
-						logprintf(config.log, LOG_ERROR, "Cannot reconnect to server: %s\n", strerror(errno));
+						logprintf(config.log, LOG_ERROR, "Reconnection failed: %s\n", strerror(errno));
 						break;
 					}
 				} else {
-					logprintf(config.log, LOG_ERROR, "Error in sending message: %s\n", strerror(errno));
+					logprintf(config.log, LOG_ERROR, "Failed to send: %s\n", strerror(errno));
 					break;
 				}
 			}

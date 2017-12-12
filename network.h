@@ -15,16 +15,15 @@ bool send_message(LOGGER log, int sock_fd, void* data, unsigned len) {
 	ssize_t bytes = len;
 	ssize_t status = 0;
 
-	logprintf(log, LOG_DEBUG, "sending data: %d bytes\n", len);
 	while (bytes > 0) {
 		status = send(sock_fd, data, len, MSG_NOSIGNAL);
 		//status = send(sock_fd, data, bytes, 0);
 
 		if (status < 0) {
-			logprintf(log, LOG_ERROR, "Cannot send data: %s", strerror(errno));
+			logprintf(log, LOG_ERROR, "Failed to send: %s\n", strerror(errno));
 			return false;
 		}
-		logprintf(log, LOG_DEBUG, "%d bytes sent\n", status);
+		logprintf(log, LOG_DEBUG, "%zu of %zu bytes sent (%zu this iteration)\n", data + status, len, status);
 
 		bytes -= status;
 		data += status;
@@ -49,8 +48,8 @@ ssize_t recv_message(LOGGER log, int sock_fd, uint8_t buf[], unsigned len, uint8
 
 		length_needed = get_size_from_command(buf, status);
 
-		if (length_needed < 0) {
-			logprintf(log, LOG_ERROR, "Unkown message type %d.\n", buf[0]);
+		if(length_needed < 0) {
+			logprintf(log, LOG_ERROR, "Unknown message type %d\n", buf[0]);
 			return -1;
 		}
 
@@ -60,29 +59,27 @@ ssize_t recv_message(LOGGER log, int sock_fd, uint8_t buf[], unsigned len, uint8
 		}
 	}
 
-	logprintf(log, LOG_DEBUG, "Trying to recv a message.\n");
-
 	while (length_needed < 1 || bytes < length_needed) {
 
 		status = recv(sock_fd, buf + bytes, len - bytes, 0);
 
 		if (status < 0) {
-			logprintf(log, LOG_ERROR, "Cannot recv data: %s\n", strerror(errno));
+			logprintf(log, LOG_ERROR, "recv() failed: %s\n", strerror(errno));
 			return -1;
 		}
 
 		if (status == 0) {
-			logprintf(log, LOG_ERROR, "Server closed connection.\n");
+			logprintf(log, LOG_ERROR, "Connection closed by server\n");
 			return -1;
 		}
 
-		logprintf(log, LOG_DEBUG, "%d bytes received.\n", status);
+		logprintf(log, LOG_DEBUG, "%d bytes received\n", status);
 
 		if (status > 0 && length_needed < 1) {
 			length_needed = get_size_from_command(buf, status);
 
 			if (length_needed < 0) {
-				logprintf(log, LOG_ERROR, "Unkown message type 0x%.2x\n", buf[0]);
+				logprintf(log, LOG_ERROR, "Unknown message type 0x%.2x\n", buf[0]);
 				return -1;
 			}
 
@@ -110,7 +107,7 @@ int tcp_connect(char* host, char* port){
 
 	error = getaddrinfo(host, port, &hints, &head);
 	if(error){
-		fprintf(stderr, "getaddrinfo: %s\r\n", gai_strerror(error));
+		fprintf(stderr, "getaddrinfo() failed: %s\n", gai_strerror(error));
 		return -1;
 	}
 
