@@ -33,8 +33,8 @@ When installed, this component will be available as `input-client`
 
 ## Build prerequisites
 
-A working C compiler and make. The server needs the uinput subsytem to work and the (linux/uinput.h).
-The client and the server needs the linux/input.h header file.
+A working C compiler and (GNU) make, in addition to the Linux `uinput` headers (`linux/uinput.h`),
+which is included in the package `linux-libc-dev` in Debian.
 
 ## Build
 
@@ -45,6 +45,7 @@ After installing the prerequisite packages, building by running `make` should wo
 By running `make install`, both components are installed to `/usr/bin`.
 
 To install only one component, run `make install-server` or `make install-client`, respectively.
+Neither is required though, running the tools directly from the build directory is fine.
 
 ## Usage
 
