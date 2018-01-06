@@ -85,9 +85,11 @@ void init_abs_info(struct device_meta* meta) {
 bool create_device(LOGGER log, gamepad_client* client, struct device_meta* meta) {
 	int uinput_fd = open_uinput();
 	if (uinput_fd < 0) {
+		logprintf(log, LOG_ERROR, "Failed to access uinput: %s\n", strerror(errno));
 		return false;
 	}
 	if (!enable_device_keys(log, uinput_fd, meta)) {
+		logprintf(log, LOG_ERROR, "Failed to enable uinput keys\n");
 		close(uinput_fd);
 		return false;
 	}

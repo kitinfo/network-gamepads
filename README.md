@@ -33,8 +33,8 @@ When installed, this component will be available as `input-client`
 
 ## Build prerequisites
 
-A working C compiler and make. The server needs the uinput subsytem to work and the (linux/uinput.h).
-The client and the server needs the linux/input.h header file.
+A working C compiler and (GNU) make, in addition to the Linux `uinput` headers (`linux/uinput.h`),
+which is included in the package `linux-libc-dev` in Debian.
 
 ## Build
 
@@ -45,6 +45,7 @@ After installing the prerequisite packages, building by running `make` should wo
 By running `make install`, both components are installed to `/usr/bin`.
 
 To install only one component, run `make install-server` or `make install-client`, respectively.
+Neither is required though, running the tools directly from the build directory is fine.
 
 ## Usage
 
@@ -64,14 +65,14 @@ The directory `/dev/input/by-id/` has symlinks that are named in a pretty readab
 To test whether a device node is the one you want, run `cat /dev/input/path/to/node` and press some keys.
 Each keypress should print some seemingly random data.
 
-Having found your device node, run `input-client [-t <type>] /dev/input/path/to/input/node`, while specifying the following
-parameters via environment variables or command line arguments:
+Having found your device node, run `input-client [-t <type>] [-h <host>] [-n <name>] /dev/input/path/to/input/node`.
+Optionally, you can specify some or all of the following parameters via environment variables or command line arguments:
 
 * `SERVER_HOST`: The host to connect to (Default: `::`)
 * `SERVER_PORT`: The port to connect to (Default `9292`)
 * `SERVER_PW`: The password required for the server (Default `foobar`)
 
-Type can be one of the following:
+Type (`-t`) can be one of the following:
 
 * `mouse`: a mouse device
 * `keyboard`: a keyboard device
@@ -81,6 +82,10 @@ Type can be one of the following:
 
 If the type is not specified the default type is used. It enables all device types. Not defining a device type is not recommended.
 Device types can be accumulated (Example: mouse and keyboard in one device: -t mouse -t keyboard).
+
+The host (`-h`) argument specifies the server to connect to and will override a given `SERVER_HOST` environment variable.
+
+The name (`-n`) argument can be used to specify an optional name used on the server, eg. for mapping devices to players.
 
 While the client is running (and after it has successfully connected), input events generated should take effect
 on the computer running the server.
