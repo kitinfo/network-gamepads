@@ -257,22 +257,20 @@ void add_arguments(Config* config) {
 	eargs_addArgumentInt("-r", "--reopen", &config->reopen_attempts);
 }
 
-int device_reopen(Config* config, char* file) {
-	int fd = -1;
-
+int device_reopen(Config* config, char* file, int* fd) {
 	int counter = config->reopen_attempts;
 
 	while (!quit_signal && counter != 0) {
-		fd = open(file, O_RDONLY);
+		*fd = open(file, O_RDONLY);
 		if (fd >= 0) {
 			//get exclusive control
 			int grab = 1;
- 			if (ioctl(fd, EVIOCGRAB, &grab) < 0) {
+ 			if (ioctl(*fd, EVIOCGRAB, &grab) < 0) {
 				logprintf(config->log, LOG_WARNING, "Failed to request exclusive access to device: %s\n", strerror(errno));
-				close(fd);
+				close(*fd);
 				return -1;
 			}
-			return fd;
+			return 0;
 		}
 		logprintf(config->log, LOG_ERROR, "Failed to reconnect, waiting...\n");
 		sleep(1);
@@ -351,7 +349,7 @@ int scan_devices(Config* config) {
 		close(fd);
 	}
 	int test = 1;
-	int in = -1;
+	unsigned int in = 0;
 	while (test) {
 		printf("Select the device event number [0-%d]: ", ndev -1);
 		char input[10];
@@ -424,8 +422,7 @@ int run(Config* config, int event_fd) {
 		if(bytes < 0) {
 			logprintf(config->log, LOG_ERROR, "read() failed: %s\nReconnecting...\n", strerror(errno));
 			close(event_fd);
-			event_fd = device_reopen(config, config->dev_path);
-			if (event_fd < 0) {
+			if (device_reopen(config, config->dev_path, &event_fd) < 0) {
 				break;
 			} else {
 				continue;
