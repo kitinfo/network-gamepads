@@ -1,5 +1,8 @@
 #pragma once
 
+#include <inttypes.h>
+#include "../libs/logger.h"
+
 typedef struct {
 	LOGGER log;
 	uint64_t limit;

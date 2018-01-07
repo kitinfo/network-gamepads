@@ -9,15 +9,24 @@
 #include <unistd.h>
 #include <errno.h>
 #include <signal.h>
+#include <dirent.h>
 
-#include "libs/logger.h"
-#include "libs/logger.c"
-#include "libs/easy_args.h"
-#include "libs/easy_args.c"
+#if __BSD_SOURCE
+#include <sys/endian.h>
+#else
 
-#include "network.h"
-#include "protocol.h"
-#include "client.h"
+#include <endian.h>
+#endif
+
+#include "../libs/logger.h"
+#include "../libs/easy_args.h"
+
+#include "../common/network.h"
+#include "../common/protocol.h"
+#include "input-client.h"
+
+#define DEV_INPUT_DIR "/dev/input"
+#define EVENT_DEV_NAME "event"
 
 sig_atomic_t quit_signal = false;
 
@@ -274,6 +283,185 @@ int device_reopen(Config* config, char* file) {
 	return -1;
 }
 
+int is_event_device(const struct dirent* dir) {
+
+	return strncmp(EVENT_DEV_NAME, dir->d_name, strlen(EVENT_DEV_NAME)) == 0;
+}
+
+int event_sort(const struct dirent **a, const struct dirent **b) {
+	const char* sa = (*a)->d_name;
+	const char* sb = (*b)->d_name;
+	int len = strlen(EVENT_DEV_NAME);
+	int len_a = strlen(sa);
+	int len_b = strlen(sb);
+	int num_a = 0;
+	int num_b = 0;
+	if (len_a > len && len_b > len
+			&& !strncmp(EVENT_DEV_NAME, sa, len)
+			&& !strncmp(EVENT_DEV_NAME, sb, len)) {
+		num_a = strtoul(sa + len, NULL, 10);
+		num_b = strtoul(sb + len, NULL, 10);
+		return num_a - num_b;
+	} else {
+		return strcmp(sa, sb);
+	}
+}
+
+// from evtest
+int scan_devices(Config* config) {
+
+	struct dirent **namelist;
+
+	int ndev;
+	int i;
+	int status = 0;
+
+	ndev = scandir(DEV_INPUT_DIR, &namelist, is_event_device, event_sort);
+
+	if (ndev <= 0) {
+		logprintf(config->log, LOG_ERROR, "No device found.\n");
+		return 1;
+	}
+	char fname[256 + strlen(DEV_INPUT_DIR)];
+	char name[UINPUT_MAX_NAME_SIZE];
+
+	for (i = 0; i < ndev; i++) {
+		// size is defined in struct dirent
+		int fd = -1;
+		memset(fname, 0, sizeof(fname));
+		memset(fname, 0, sizeof(name));
+
+		snprintf(fname, sizeof(fname), "%s/%s", DEV_INPUT_DIR, namelist[i]->d_name);
+
+		fd = open(fname, O_RDONLY);
+
+		if (fd < 0) {
+			logprintf(config->log, LOG_WARNING, "Cannot open device %s: %s\n", fname, strerror(errno));
+			continue;
+		}
+
+		if (ioctl(fd, EVIOCGNAME(sizeof(name)), name) < 0) {
+			logprintf(config->log, LOG_WARNING, "Cannot get name from device %s: %s\n", fname, strerror(errno));
+			close(fd);
+			continue;
+		}
+
+		printf("[%3d] %s (%s)\n", i, name, fname);
+		close(fd);
+	}
+	int test = 1;
+	int in = -1;
+	while (test) {
+		printf("Select the device event number [0-%d]: ", ndev -1);
+		char input[10];
+		if (fgets(input, sizeof(input), stdin) == NULL) {
+			logprintf(config->log, LOG_ERROR, "Cannot read from stdin: %s", strerror(errno));
+			return 1;
+		}
+		char* endptr;
+		in = strtoul(input, &endptr, 10);
+		if (endptr == input) {
+			logprintf(config->log, LOG_ERROR, "Input was not a number.\n");
+		} else if (in >= ndev) {
+			logprintf(config->log, LOG_ERROR, "Input is not between 0 and %d\n", ndev -1);
+		} else {
+			test = 0;
+		}
+	}
+
+	int dev_len = snprintf(NULL, 0, "%s/%s", DEV_INPUT_DIR, namelist[in]->d_name);
+	config->dev_path = calloc(dev_len + 1, sizeof(char));
+	sprintf(config->dev_path, "%s/%s", DEV_INPUT_DIR, namelist[in]->d_name);
+
+	for (i = 0; i < ndev; i++) {
+		free(namelist[i]);
+	}
+	free(namelist);
+
+	return status;
+}
+
+
+
+int run(Config* config, int event_fd) {
+	struct input_event event;
+	int sock_fd;
+	ssize_t bytes;
+	struct sigaction act = {
+		.sa_handler = &quit
+	};
+	DataMessage data = {0};
+	data.msg_type = MESSAGE_DATA;
+
+	if (sigaction(SIGINT, &act, NULL) < 0) {
+		logprintf(config->log, LOG_ERROR, "Failed to set signal mask\n");
+		return 10;
+	}
+
+	sock_fd = tcp_connect(config->host, config->port);
+	if(sock_fd < 0) {
+		logprintf(config->log, LOG_ERROR, "Failed to reach server at %s port %s\n", config->host, config->port);
+		return 2;
+	}
+
+	if (!init_connect(sock_fd, event_fd, config)) {
+		close(sock_fd);
+		return 3;
+	}
+
+	//get exclusive control
+	int grab = 1;
+ 	if (ioctl(event_fd, EVIOCGRAB, &grab) < 0) {
+		logprintf(config->log, LOG_WARNING, "Failed to request exclusive access to device: %s\n", strerror(errno));
+		close(sock_fd);
+		return 4;
+	}
+
+	while(!quit_signal){
+		//block on read
+		bytes = read(event_fd, &event, sizeof(event));
+		if(bytes < 0) {
+			logprintf(config->log, LOG_ERROR, "read() failed: %s\nReconnecting...\n", strerror(errno));
+			close(event_fd);
+			event_fd = device_reopen(config, config->dev_path);
+			if (event_fd < 0) {
+				break;
+			} else {
+				continue;
+			}
+		}
+		if(bytes == sizeof(event)) {
+			logprintf(config->log, LOG_DEBUG, "Event type:%d, code:%d, value:%d\n", event.type, event.code, event.value);
+
+			data.type = htobe16(event.type);
+			data.code = htobe16(event.code);
+			data.value = htobe32(event.value);
+
+			if(!send_message(config->log, sock_fd, &data, sizeof(data))) {
+				//check if connection is closed
+				if(errno == ECONNRESET || errno == EPIPE) {
+					if (!init_connect(sock_fd, event_fd, config)) {
+						logprintf(config->log, LOG_ERROR, "Reconnection failed: %s\n", strerror(errno));
+						break;
+					}
+				} else {
+					logprintf(config->log, LOG_ERROR, "Failed to send: %s\n", strerror(errno));
+					break;
+				}
+			}
+		} else{
+			logprintf(config->log, LOG_WARNING, "Short read from event descriptor (%zd bytes)\n", bytes);
+		}
+	}
+	if (sock_fd != -1) {
+		uint8_t quit_msg = MESSAGE_QUIT;
+		send_message(config->log, sock_fd, &quit_msg, sizeof(quit_msg));
+		close(sock_fd);
+	}
+
+	return 0;
+}
+
 int main(int argc, char** argv){
 
 	Config config = {
@@ -283,6 +471,7 @@ int main(int argc, char** argv){
 		},
 		.program_name = argv[0],
 		.dev_name = NULL,
+		.dev_path = NULL,
 		.host = getenv("SERVER_HOST") ? getenv("SERVER_HOST"):DEFAULT_HOST,
 		.password = getenv("SERVER_PW") ? getenv("SERVER_PW"):DEFAULT_PASSWORD,
 		.port = getenv("SERVER_PORT") ? getenv("SERVER_PORT"):DEFAULT_PORT,
@@ -290,103 +479,31 @@ int main(int argc, char** argv){
 		.slot = 0
 	};
 
-	int event_fd, sock_fd;
-	ssize_t bytes;
-	struct input_event event;
-	DataMessage data = {0};
-	data.msg_type = MESSAGE_DATA;
+	int event_fd;
 
 	add_arguments(&config);
 	char* output[argc];
 	int outputc = eargs_parse(argc, argv, output, &config);
 
 	if(outputc < 1){
-		logprintf(config.log, LOG_ERROR, "Missing arguments\n");
-		return EXIT_FAILURE;
+		if (scan_devices(&config)) {
+			logprintf(config.log, LOG_ERROR, "Missing device\n");
+			return EXIT_FAILURE;
+		}
+	} else {
+		config.dev_path = strdup(output[0]);
 	}
 
-	logprintf(config.log, LOG_INFO, "Reading input events from %s\n", output[0]);
-	event_fd = open(output[0], O_RDONLY);
+	logprintf(config.log, LOG_INFO, "Reading input events from %s\n", config.dev_path);
+	event_fd = open(config.dev_path, O_RDONLY);
 	if(event_fd < 0){
-		logprintf(config.log, LOG_ERROR, "Failed to open device: %s\n", strerror(errno));
+		logprintf(config.log, LOG_ERROR, "Failed to open device %s: %s\n", config.dev_path, strerror(errno));
+		free(config.dev_path);
 		return EXIT_FAILURE;
 	}
 
-	struct sigaction act = {
-		.sa_handler = &quit
-	};
-
-	if (sigaction(SIGINT, &act, NULL) < 0) {
-		logprintf(config.log, LOG_ERROR, "Failed to set signal mask\n");
-		return 10;
-	}
-
-	sock_fd = tcp_connect(config.host, config.port);
-	if(sock_fd < 0) {
-		logprintf(config.log, LOG_ERROR, "Failed to reach server at %s port %s\n", config.host, config.port);
-		close(event_fd);
-		return 2;
-	}
-
-	if (!init_connect(sock_fd, event_fd, &config)) {
-		close(event_fd);
-		close(sock_fd);
-		return 3;
-	}
-
-	//get exclusive control
-	int grab = 1;
- 	if (ioctl(event_fd, EVIOCGRAB, &grab) < 0) {
-		logprintf(config.log, LOG_WARNING, "Failed to request exclusive access to device: %s\n", strerror(errno));
-		close(event_fd);
-		close(sock_fd);
-		return 4;
-	}
-
-	while(!quit_signal){
-		//block on read
-		bytes = read(event_fd, &event, sizeof(event));
-		if(bytes < 0) {
-			logprintf(config.log, LOG_ERROR, "read() failed: %s\nReconnecting...\n", strerror(errno));
-			close(event_fd);
-			event_fd = device_reopen(&config, output[0]);
-			if (event_fd < 0) {
-				break;
-			} else {
-				continue;
-			}
-		}
-		if(bytes == sizeof(event)) {
-			logprintf(config.log, LOG_DEBUG, "Event type:%d, code:%d, value:%d\n", event.type, event.code, event.value);
-
-			data.type = htobe16(event.type);
-			data.code = htobe16(event.code);
-			data.value = htobe32(event.value);
-
-			if(!send_message(config.log, sock_fd, &data, sizeof(data))) {
-				//check if connection is closed
-				if(errno == ECONNRESET || errno == EPIPE) {
-					if (!init_connect(sock_fd, event_fd, &config)) {
-						logprintf(config.log, LOG_ERROR, "Reconnection failed: %s\n", strerror(errno));
-						break;
-					}
-				} else {
-					logprintf(config.log, LOG_ERROR, "Failed to send: %s\n", strerror(errno));
-					break;
-				}
-			}
-		} else{
-			logprintf(config.log, LOG_WARNING, "Short read from event descriptor (%zd bytes)\n", bytes);
-		}
-	}
-	if (event_fd != -1) {
-		close(event_fd);
-	}
-	if (sock_fd != -1) {
-		uint8_t quit_msg = MESSAGE_QUIT;
-		send_message(config.log, sock_fd, &quit_msg, sizeof(quit_msg));
-		close(sock_fd);
-	}
-
-	return 0;
+	int status = run(&config, event_fd);
+	close(event_fd);
+	free(config.dev_path);
+	return status;
 }

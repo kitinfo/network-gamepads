@@ -1,8 +1,5 @@
-server/gamepad-server
-client/gamepad-client
 *.swp
-server-ng
-input-client
-input-server
-client
-osc-xlater
+client/input-client
+server/input-server
+osc/osc-xlater
+**/*.o

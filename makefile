@@ -1,19 +1,12 @@
-.PHONY: clean run install
-PREFIX ?= $(DESTDIR)/usr/bin
-CFLAGS ?= -Wall -g
-osc-xlater: LDLIBS=-lm
+.PHONY: clean
 
-all: server-ng client osc-xlater
+all: input-server input-client osc-xlater
 
-install-server: server-ng
-	mv server-ng input-server
-	install -m 0755 input-server "$(PREFIX)"
+input-server:
+	$(MAKE) -C server
 
-install-client: client
-	mv client input-client
-	install -m 0755 input-client "$(PREFIX)"
+input-client:
+	$(MAKE) -C client
 
-install: install-client install-server
-
-clean:
-	$(RM) server-ng client input-server input-client osc-xlater
+osc-xlater:
+	$(MAKE) -C osc

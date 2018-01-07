@@ -7,10 +7,9 @@
 #include <fcntl.h>
 #include <math.h>
 
-#include "libs/logger.h"
-#include "libs/logger.c"
-#include "network.h"
-#include "protocol.h"
+#include "../libs/logger.h"
+#include "../common/network.h"
+#include "../common/protocol.h"
 
 #define PROGRAM_NAME		"input-tools OSC translater 0.1"
 #define DEFAULT_OSC_PORT	"8000"

@@ -2,11 +2,12 @@
 #include <linux/uinput.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
 #include <fcntl.h>
 
-#include "libs/logger.h"
+#include "../libs/logger.h"
 #include "uinput.h"
 
 int open_uinput() {

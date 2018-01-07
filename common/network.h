@@ -5,7 +5,8 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
-#include "libs/logger.h"
+
+#include "../libs/logger.h"
 #include "protocol.h"
 
 #define LISTEN_QUEUE_LENGTH 128
@@ -23,7 +24,7 @@ bool send_message(LOGGER log, int sock_fd, void* data, unsigned len) {
 			logprintf(log, LOG_ERROR, "Failed to send: %s\n", strerror(errno));
 			return false;
 		}
-		logprintf(log, LOG_DEBUG, "%zu of %zu bytes sent (%zu this iteration)\n", data + status, len, status);
+		logprintf(log, LOG_DEBUG, "%zu of %zu bytes sent (%zu this iteration)\n", status, len, status);
 
 		bytes -= status;
 		data += status;

@@ -1,10 +1,11 @@
 #pragma once
-#include "libs/logger.h"
+#include "../libs/logger.h"
 
 typedef struct {
 	LOGGER log;
 	char* program_name;
 	char* dev_name;
+	char* dev_path;
 	char* password;
 	char* host;
 	char* port;
