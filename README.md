@@ -42,7 +42,7 @@ After installing the prerequisite packages, building by running `make` should wo
 
 ## Installation
 
-By running `make install`, both components are installed to `/usr/bin`.
+By running `make install`, both components are installed to `/usr/local/bin`.
 
 To install only one component, run `make install-server` or `make install-client`, respectively.
 Neither is required though, running the tools directly from the build directory is fine.

@@ -14,7 +14,7 @@ all: input-server
 input-server: $(OBJECTS)
 
 install:
-	install -m 0755 -D input-server "$(DESTDIR)$(PREFIX)/bin"
+	install -m 0755 -D input-server "$(DESTDIR)$(PREFIX)"
 
 clean:
 	$(RM) input-server

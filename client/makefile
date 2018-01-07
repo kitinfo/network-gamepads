@@ -14,7 +14,7 @@ all: input-client
 input-client: $(OBJECTS)
 
 install:
-	install -m 0755 -D input-client "$(DESTDIR)$(PREFIX)/bin"
+	install -m 0755 -D input-client "$(DESTDIR)$(PREFIX)"
 
 clean:
 	$(RM) input-client

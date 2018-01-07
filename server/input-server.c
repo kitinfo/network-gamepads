@@ -9,12 +9,16 @@
 #define MAX_CLIENTS 8
 #define MAX_WAITING_CLIENTS 8
 
-#include "../libs/logger.h"
 #include "../libs/easy_args.h"
+#include "../libs/logger.h"
+
+#include "../common/strdup.h"
 #include "../common/network.h"
 #include "../common/protocol.h"
 #include "../common/structures.h"
 #include "../common/uinput.h"
+
+
 #include "input-server.h"
 
 volatile sig_atomic_t shutdown_server = 0;
