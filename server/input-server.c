@@ -15,7 +15,7 @@
 #include "../common/protocol.h"
 #include "../common/structures.h"
 #include "../common/uinput.h"
-#include "server-ng.h"
+#include "input-server.h"
 
 volatile sig_atomic_t shutdown_server = 0;
 gamepad_client clients[MAX_CLIENTS] = {};
