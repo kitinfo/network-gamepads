@@ -35,6 +35,7 @@ bool get_abs_info(Config* config, int device_fd, int abs, struct input_absinfo* 
 		logprintf(config->log, LOG_INFO, "Failed to find absolute axis %d\n", abs);
 		return false;
 	}
+	//logprintf(config->log, LOG_DEBUG, "abs %d: %d - %d (%d, %d)\n", abs, info->minimum, info->maximum, info->fuzz, info->flat);
 	return true;
 }
 

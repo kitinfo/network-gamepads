@@ -53,12 +53,12 @@ const input_device_bits ABS_KEYBITS = {
 };
 	/* GAMEPAD */
 const input_device_bits GAMEPAD_KEYBITS = {
-	.len = 42,
+	.len = 41,
 	.bits = {
 		{ UI_SET_EVBIT, EV_SYN },
 		{ UI_SET_EVBIT, EV_KEY },
 		{ UI_SET_EVBIT, EV_ABS },
-		{ UI_SET_EVBIT, EV_FF },
+		//{ UI_SET_EVBIT, EV_FF },
 		{ UI_SET_EVBIT, EV_MSC },
 		{ UI_SET_MSCBIT, MSC_SCAN },
 		{ UI_SET_KEYBIT, BTN_A },
@@ -120,7 +120,7 @@ const input_device_bits XBOX_KEYBITS = {
 		{ UI_SET_KEYBIT, BTN_MODE },
 		{ UI_SET_KEYBIT, BTN_THUMBL },
 		{ UI_SET_KEYBIT, BTN_THUMBR },
-//		{ UI_SET_KEYBIT, KEY_HOMEPAGE },
+		{ UI_SET_KEYBIT, KEY_HOMEPAGE },
 		{ UI_SET_ABSBIT, ABS_X },
 		{ UI_SET_ABSBIT, ABS_Y },
 		{ UI_SET_ABSBIT, ABS_Z },
@@ -369,7 +369,7 @@ void init_abs_info(struct device_meta* meta) {
 		meta->absmax[ABS_HAT0Y] = 1;
 }
 
-bool create_device(LOGGER log, gamepad_client* client, struct device_meta* meta) {
+bool create_device_old_format(LOGGER log, gamepad_client* client, struct device_meta* meta) {
 	int uinput_fd = open_uinput();
 	if (uinput_fd < 0) {
 		logprintf(log, LOG_ERROR, "Failed to access uinput: %s\n", strerror(errno));
@@ -380,14 +380,16 @@ bool create_device(LOGGER log, gamepad_client* client, struct device_meta* meta)
 		close(uinput_fd);
 		return false;
 	}
+
 	struct uinput_user_dev dev = {};
 	memset(&dev, 0, sizeof(dev));
-	strncpy(dev.name, meta->name, UINPUT_MAX_NAME_SIZE - 1);
 	memcpy(&dev.id, &meta->id, sizeof(struct input_id));
+	strncpy(dev.name, meta->name, UINPUT_MAX_NAME_SIZE - 1);
 	memcpy(&dev.absmax, &meta->absmax, ABS_CNT * sizeof(__s32));
 	memcpy(&dev.absmin, &meta->absmin, ABS_CNT * sizeof(__s32));
 	memcpy(&dev.absfuzz, &meta->absfuzz, ABS_CNT * sizeof(__s32));
 	memcpy(&dev.absflat, &meta->absflat, ABS_CNT * sizeof(__s32));
+
 	int ret = write(uinput_fd, &dev, sizeof(dev));
 
 	if (ret < 0) {
@@ -402,6 +404,57 @@ bool create_device(LOGGER log, gamepad_client* client, struct device_meta* meta)
 		close(uinput_fd);
 		logprintf(log, LOG_ERROR, "Cannot create device: %s\n", strerror(errno));
 		return false;
+	}
+	client->ev_fd = uinput_fd;
+	return true;
+
+}
+
+bool create_device(LOGGER log, gamepad_client* client, struct device_meta* meta) {
+	int uinput_fd = open_uinput();
+	if (uinput_fd < 0) {
+		logprintf(log, LOG_ERROR, "Failed to access uinput: %s\n", strerror(errno));
+		return false;
+	}
+
+	if (!enable_device_keys(log, uinput_fd, meta)) {
+		logprintf(log, LOG_ERROR, "Failed to enable uinput keys\n");
+		close(uinput_fd);
+		return false;
+	}
+
+	struct uinput_setup dev = {};
+	memset(&dev, 0, sizeof(dev));
+	memcpy(&dev.id, &meta->id, sizeof(struct input_id));
+	strncpy(dev.name, meta->name, UINPUT_MAX_NAME_SIZE - 1);
+
+
+	if (ioctl(uinput_fd, UI_DEV_SETUP, &dev) < 0) {
+		logprintf(log, LOG_WARNING, "Cannot setup device, try old ioctl.\n");
+		close(uinput_fd);
+		return create_device_old_format(log, client, meta);
+	}
+	struct uinput_abs_setup abs = {};
+	int i;
+	for (i = 0; i < ABS_CNT; i++) {
+		memset(&abs, 0, sizeof(abs));
+		abs.absinfo.maximum = meta->absmax[i];
+		abs.absinfo.minimum = meta->absmin[i];
+		abs.absinfo.fuzz = meta->absfuzz[i];
+		abs.absinfo.flat = meta->absflat[i];
+
+		if (ioctl(uinput_fd, UI_ABS_SETUP, &abs) < 0) {
+			logprintf(log, LOG_WARNING, "Cannot setup absinfo, try old ioctl.\n");
+			close(uinput_fd);
+			return create_device_old_format(log, client, meta);
+		}
+	}
+	int ret = ioctl(uinput_fd, UI_DEV_CREATE);
+
+	if (ret < 0) {
+		close(uinput_fd);
+		logprintf(log, LOG_WARNING, "Cannot create device, try old ioctl.\n");
+		return create_device_old_format(log, client, meta);
 	}
 	client->ev_fd = uinput_fd;
 	return true;
