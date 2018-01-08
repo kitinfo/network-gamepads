@@ -35,7 +35,7 @@ bool get_abs_info(Config* config, int device_fd, int abs, struct input_absinfo* 
 		logprintf(config->log, LOG_INFO, "Failed to find absolute axis %d\n", abs);
 		return false;
 	}
-	//logprintf(config->log, LOG_DEBUG, "abs %d: %d - %d (%d, %d)\n", abs, info->minimum, info->maximum, info->fuzz, info->flat);
+	logprintf(config->log, LOG_DEBUG, "Absolute axis %d: range %d - %d, value %d, fuzz %d, flat %d\n", abs, info->minimum, info->maximum, info->value, info->fuzz, info->flat);
 	return true;
 }
 
@@ -76,18 +76,12 @@ bool setup_device(int sock_fd, int device_fd, Config* config) {
 	msg->length = UINPUT_MAX_NAME_SIZE;
 	msg->type = htobe64(config->type);
 
-	struct input_id ids;
 
-	if (ioctl(device_fd, EVIOCGID, &ids) < 0) {
+	if (ioctl(device_fd, EVIOCGID, &(msg->id)) < 0) {
 		logprintf(config->log, LOG_ERROR, "Failed to query device ID: %s\n", strerror(errno));
 		free(msg);
 		return false;
 	}
-
-	msg->id_bustype = htobe16(ids.bustype);
-	msg->id_vendor = htobe16(ids.vendor);
-	msg->id_product = htobe16(ids.product);
-	msg->id_version = htobe16(ids.version);
 
 	if (config->dev_name) {
 		strncpy(msg->name, config->dev_name, UINPUT_MAX_NAME_SIZE);

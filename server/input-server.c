@@ -256,37 +256,34 @@ int handle_password(Config* config, gamepad_client* client, PasswordMessage* msg
 
 // Handles a absinfo message. Returns the bytes used or -1 on failure.
 int handle_absinfo(Config* config, gamepad_client* client, ABSInfoMessage* msg, uint8_t slot) {
-	logprintf(config->log, LOG_INFO, "client %d: Handle ABSInfo message.\n", slot);
+	logprintf(config->log, LOG_INFO, "[%d] Absolute axis setup\n", slot);
 	if (client->last_ret != MESSAGE_SETUP_REQUIRED) {
 		logprintf(config->log, LOG_WARNING,
-				"client %d: MESSAGE_INVALID: ABSInfoMessage must be send in SETUP state.\n", slot);
+				"[%d] Protocol error\n", slot);
 		return -1;
 	}
 
-	client->meta.absmax[msg->axis] = msg->info.maximum;
-	client->meta.absmin[msg->axis] = msg->info.minimum;
-	client->meta.absfuzz[msg->axis] = msg->info.fuzz;
-	client->meta.absflat[msg->axis] = msg->info.flat;
-
+	if(msg->axis >= ABS_CNT){
+		logprintf(config->log, LOG_WARNING,
+				"[%d] Protocol data out of bounds\n", slot);
+		return -1;
+	}
+	client->meta.absinfo[msg->axis] = msg->info;
 	return sizeof(ABSInfoMessage);
 }
 
 // handles the device message. Returns the bytes used or -1 on failure.
 int handle_device(Config* config, gamepad_client* client, DeviceMessage* msg, uint8_t slot) {
-	logprintf(config->log, LOG_INFO, "client %d: handle device message.\n", slot);
+	logprintf(config->log, LOG_INFO, "[%d] Device setup\n", slot);
 
 	// the device message may only be send in setup required state.
 	if (client->last_ret != MESSAGE_SETUP_REQUIRED) {
 		logprintf(config->log, LOG_WARNING,
-				"client %d: MESSAGE_INVALID: DeviceMessage must be send in SETUP state.\n", slot);
+				"[%d] Protocol error\n", slot);
 		return -1;
 	}
 
 	client->meta.devtype = be64toh(msg->type);
-	client->meta.id.bustype = be16toh(msg->id_bustype);
-	client->meta.id.vendor = be16toh(msg->id_vendor);
-	client->meta.id.product = be16toh(msg->id_product);
-	client->meta.id.version = be16toh(msg->id_version);
 
 	client->meta.name = malloc(msg->length);
 	memcpy(client->meta.name, msg->name, msg->length);
@@ -302,7 +299,7 @@ int handle_setup_required(Config* config, gamepad_client* client, uint8_t* messa
 	if (client->last_ret != MESSAGE_SUCCESS) {
 		msg = MESSAGE_INVALID;
 		logprintf(config->log, LOG_WARNING,
-				"client %d: MESSAGE_INVALID: SetupRequiredMessage must be send in SUCCESS state.\n", slot);
+				"[%d] Protocol error\n", slot);
 		return -1;
 	} else {
 		msg = MESSAGE_SETUP_REQUIRED;
@@ -322,22 +319,21 @@ int handle_quit(Config* config, gamepad_client* client, uint8_t* msg, uint8_t sl
 
 // handles the setup end message. Returns the bytes used or -1 on failure.
 int handle_setup_end(Config* config, gamepad_client* client, uint8_t* msg, uint8_t slot) {
-	logprintf(config->log, LOG_DEBUG, "client %d: handle setup end\n", slot);
+	logprintf(config->log, LOG_DEBUG, "[%d] Setup done\n", slot);
 	uint8_t message;
 	// setup end message may only be send in setup required state.
 	if (client->last_ret != MESSAGE_SETUP_REQUIRED) {
 		message = MESSAGE_INVALID;
 		logprintf(config->log, LOG_WARNING,
-				"client %d: MESSAGE_INVALID: SetupEndMessage must be send in SETUP state.\n", slot);
+				"[%d] Protocol error\n", slot);
 		send_message(config->log, client->fd, &message, sizeof(message));
 		return -1;
 	}
 	// check for device limitations
 	if (!(client->meta.devtype & config->limit)) {
-		logprintf(config->log, LOG_WARNING, "client %d: Device type 0x%zx is not enabled\n", client->meta.devtype);
+		logprintf(config->log, LOG_WARNING, "[%d] Device type 0x%zx not enabled\n", slot, client->meta.devtype);
 
 		uint8_t msg_na = MESSAGE_DEVICE_NOT_ALLOWED;
-
 		send_message(config->log, client->fd, &msg_na, sizeof(msg_na));
 		return -1;
 	}
@@ -359,7 +355,7 @@ int handle_setup_end(Config* config, gamepad_client* client, uint8_t* msg, uint8
 // handles data messages. Returns the bytes used or -1 on failure.
 int handle_data(Config* config, gamepad_client* client, DataMessage* msg, uint8_t slot) {
 	if (client->last_ret != MESSAGE_SUCCESS) {
-		logprintf(config->log, LOG_WARNING, "client %d: MESSAGE_INVALID: DataMessage must be send in SUCCESS state.\n", slot);
+		logprintf(config->log, LOG_WARNING, "[%d] Protocol error\n", slot);
 		return sizeof(DataMessage);
 	}
 
@@ -371,11 +367,11 @@ int handle_data(Config* config, gamepad_client* client, DataMessage* msg, uint8_
 	};
 
 	logprintf(config->log, LOG_DEBUG,
-			"client %d: Type: 0x%.2x, code: 0x%.2x, value: 0x%.2x\n", slot, event.type, event.code, event.value);
+			"[%d] Type: 0x%.2x Code: 0x%.2x Value: 0x%.2x\n", slot, event.type, event.code, event.value);
 
 	ssize_t bytes = write(client->ev_fd, &event, sizeof(struct input_event));
 	if (bytes < 0) {
-		logprintf(config->log, LOG_ERROR, "client %d: Cannot write to device: %s\n", slot, strerror(errno));
+		logprintf(config->log, LOG_ERROR, "[%d:] Failed to write event: %s\n", slot, strerror(errno));
 		return -1;
 	}
 
@@ -396,13 +392,13 @@ bool client_data(Config* config, gamepad_client* client, uint8_t slot) {
 		bytes = get_size_from_command(msg, client->bytes_available);
 
 		if (bytes < 0){
-			logprintf(config->log, LOG_WARNING, "client: %d: unkown message: 0x%.2x.\n", slot, msg[0]);
+			logprintf(config->log, LOG_WARNING, "[%d] Invalid message: 0x%.2x.\n", slot, msg[0]);
 			return false;
 		}
 
 		// we need additional bytes
 		if (client->bytes_available < bytes) {
-			logprintf(config->log, LOG_DEBUG, "client: %d: additional bytes...\n", slot);
+			logprintf(config->log, LOG_DEBUG, "[%d] Short read\n", slot);
 			return true;
 		}
 
@@ -430,7 +426,7 @@ bool client_data(Config* config, gamepad_client* client, uint8_t slot) {
 				ret = handle_data(config, client, (DataMessage*) msg, slot);
 				break;
 			default:
-				logprintf(config->log, LOG_ERROR, "client: %d: Unkown message: 0x%.2x\n", slot, msg[0]);
+				logprintf(config->log, LOG_ERROR, "[%d] Unkown message type 0x%.2x\n", slot, msg[0]);
 				ret = -1;
 				break;
 		}
@@ -446,7 +442,7 @@ bool client_data(Config* config, gamepad_client* client, uint8_t slot) {
 		if (ret > 0) {
 			client->scan_offset += ret;
 			client->bytes_available -= ret;
-			logprintf(config->log, LOG_DEBUG, "client: %d: Update offsets to (%d, %d).\n", slot, client->scan_offset, client->bytes_available);
+			logprintf(config->log, LOG_DEBUG, "[%d] Buffer updated to scan_offset %d, %d bytes left\n", slot, client->scan_offset, client->bytes_available);
 		}
 	}
 	return true;
@@ -457,7 +453,6 @@ bool client_data(Config* config, gamepad_client* client, uint8_t slot) {
  * Returns false when a error occurs on receiving data from socket.
  */
 bool recv_data(Config* config, gamepad_client* client, uint8_t slot) {
-	logprintf(config->log, LOG_DEBUG, "client %d: move %d bytes.\n", slot, client->bytes_available);
 	memmove(client->input_buffer, client->input_buffer + client->scan_offset, client->bytes_available);
 
 	ssize_t bytes;
@@ -466,15 +461,15 @@ bool recv_data(Config* config, gamepad_client* client, uint8_t slot) {
 
 	// cannot receive data
 	if (bytes < 0) {
-		logprintf(config->log, LOG_ERROR, "client: %d: Cannot recveice data from socket.\n", slot);
+		logprintf(config->log, LOG_ERROR, "[%d] Failed to receive data\n", slot);
 		return false;
 	}
 
 	if (bytes == 0) {
-		logprintf(config->log, LOG_ERROR, "client %d: Client closes connection.\n", slot);
+		logprintf(config->log, LOG_ERROR, "[%d] Connection closed by remote\n", slot);
 		return false;
 	}
-	logprintf(config->log, LOG_DEBUG, "client %d: %zd bytes received\n", slot, bytes);
+	logprintf(config->log, LOG_DEBUG, "[%d] %zd bytes received\n", slot, bytes);
 
 	client->bytes_available += bytes;
 	client->scan_offset = 0;
@@ -518,14 +513,14 @@ int main(int argc, char** argv) {
 	if (status < 0) {
 		return 1;
 	} else if (status > 0) {
-		logprintf(config.log, LOG_ERROR, "Unkown command line arguments.\n");
+		logprintf(config.log, LOG_ERROR, "Unknown command line arguments.\n");
 		return usage(argc, argv, &config);
 	}
 
 	// enable all devices if no limit has been set
 	if (config.limit == 0) {
 		config.limit = UINT64_MAX;
-		logprintf(config.log, LOG_INFO, "enable all devices: 0x%zx\n", config.limit);
+		logprintf(config.log, LOG_INFO, "Enabling all devices (Mask 0x%zx)\n", config.limit);
 	}
 
 	logprintf(config.log, LOG_INFO, "%s starting\nProtocol Version: %.2x\n", SERVER_VERSION, PROTOCOL_VERSION);
@@ -576,13 +571,11 @@ int main(int argc, char** argv) {
 		//wait for events
 		status = select(maxfd + 1, &readfds, NULL, NULL, NULL);
 		if(status < 0){
-			logprintf(config.log, LOG_ERROR, "Error in select: %s\n", strerror(errno));;
+			logprintf(config.log, LOG_ERROR, "Failed to select: %s\n", strerror(errno));;
 			shutdown_server = 1;
 		}
 		else{
-			logprintf(config.log, LOG_DEBUG, "DATA incoming\n");
 			if(FD_ISSET(listen_fd, &readfds)){
-				logprintf(config.log, LOG_INFO, "new connection\n");
 				//handle client connection
 				client_connection(&config, listen_fd, waiting_clients);
 			}
@@ -605,7 +598,6 @@ int main(int argc, char** argv) {
 						waiting_clients[u].fd = -1;
 						continue;
 					}
-					logprintf(config.log, LOG_DEBUG, "waiting slot %d: handle hello\n", u);
 					if (!client_hello(&config, waiting_clients + u, u)) {
 						waiting_clients[u].bytes_available = 0;
 						waiting_clients[u].scan_offset = 0;

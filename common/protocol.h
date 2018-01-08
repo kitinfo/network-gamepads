@@ -3,7 +3,7 @@
 #include <inttypes.h>
 #include <linux/input.h>
 
-#define PROTOCOL_VERSION 0x03
+#define PROTOCOL_VERSION 0x04
 #define INPUT_BUFFER_SIZE 1024
 #define DEFAULT_PASSWORD "foobar"
 #define DEFAULT_HOST "::"
@@ -65,10 +65,7 @@ typedef struct {
 	uint8_t msg_type;
 	uint8_t length;
 	uint64_t type;
-	uint16_t id_bustype;
-	uint16_t id_vendor;
-	uint16_t id_product;
-	uint16_t id_version;
+	struct input_id id;
 	char name[];
 } DeviceMessage;
 

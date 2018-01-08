@@ -8,10 +8,7 @@ struct device_meta {
 	int devtype;
 	char* name;
 	struct input_id id;
-	__s32 absmax[ABS_CNT];
-	__s32 absmin[ABS_CNT];
-	__s32 absfuzz[ABS_CNT];
-	__s32 absflat[ABS_CNT];
+	struct input_absinfo absinfo[ABS_CNT];
 };
 
 typedef struct /*_GAMEPAD_CLIENT*/ {

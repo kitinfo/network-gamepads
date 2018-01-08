@@ -4,24 +4,24 @@
 #include "protocol.h"
 
 struct MessageInfo MESSAGE_TYPES_INFO[256] = {
-	[0 ... 255] = { .length = -1, .name = "unkown"},
-	[MESSAGE_HELLO] = { .length = sizeof(HelloMessage), .name = "hello"},
-	[MESSAGE_PASSWORD] = { .length = sizeof(PasswordMessage), .name = "password"},
-	[MESSAGE_ABSINFO] = {.length = sizeof(ABSInfoMessage), .name = "absinfo"},
-	[MESSAGE_DEVICE] = { .length = sizeof(DeviceMessage), .name = "device"},
-	[MESSAGE_SETUP_END] = { .length = 1, .name = "setup end"},
-	[MESSAGE_DATA] =  { .length = sizeof(DataMessage), .name = "data"},
-	[MESSAGE_SUCCESS] = { .length = sizeof(SuccessMessage), .name = "success"},
-	[MESSAGE_VERSION_MISMATCH] = { .length = sizeof(VersionMismatchMessage), .name = "version mismatch"},
-	[MESSAGE_INVALID_PASSWORD] = { .length = 1, .name = "invalid password"},
-	[MESSAGE_INVALID_CLIENT_SLOT] = { .length = 1, .name = "invalid client slot"},
-	[MESSAGE_INVALID] = { .length = 1, .name = "invalid message"},
-	[MESSAGE_PASSWORD_REQUIRED] = { .length = 1, .name = "password required"},
-	[MESSAGE_SETUP_REQUIRED] = { .length = 1, .name = "setup required"},
-	[MESSAGE_CLIENT_SLOT_IN_USE] = { .length = 1, .name = "client slot in use"},
-	[MESSAGE_CLIENT_SLOTS_EXHAUSTED] = { .length = 1, .name = "client slots exhausted"},
-	[MESSAGE_QUIT] = { .length = 1, .name = "quit"},
-	[MESSAGE_DEVICE_NOT_ALLOWED] = { .length = 1, .name = "device is not allowed"}
+	[0 ... 255] = { .length = -1, .name = "Invalid Message"},
+	[MESSAGE_HELLO] = { .length = sizeof(HelloMessage), .name = "Hello"},
+	[MESSAGE_PASSWORD] = { .length = sizeof(PasswordMessage), .name = "Password"},
+	[MESSAGE_ABSINFO] = {.length = sizeof(ABSInfoMessage), .name = "AbsInfo"},
+	[MESSAGE_DEVICE] = { .length = sizeof(DeviceMessage), .name = "Device"},
+	[MESSAGE_SETUP_END] = { .length = 1, .name = "SetupDone"},
+	[MESSAGE_DATA] =  { .length = sizeof(DataMessage), .name = "Data"},
+	[MESSAGE_SUCCESS] = { .length = sizeof(SuccessMessage), .name = "Success"},
+	[MESSAGE_VERSION_MISMATCH] = { .length = sizeof(VersionMismatchMessage), .name = "VersionMismatch"},
+	[MESSAGE_INVALID_PASSWORD] = { .length = 1, .name = "PasswordInvalid"},
+	[MESSAGE_INVALID_CLIENT_SLOT] = { .length = 1, .name = "SlotInvalid"},
+	[MESSAGE_INVALID] = { .length = 1, .name = "ProtocolError"},
+	[MESSAGE_PASSWORD_REQUIRED] = { .length = 1, .name = "PasswordRequest"},
+	[MESSAGE_SETUP_REQUIRED] = { .length = 1, .name = "SetupRequest"},
+	[MESSAGE_CLIENT_SLOT_IN_USE] = { .length = 1, .name = "Occupied"},
+	[MESSAGE_CLIENT_SLOTS_EXHAUSTED] = { .length = 1, .name = "Exhausted"},
+	[MESSAGE_QUIT] = { .length = 1, .name = "Quit"},
+	[MESSAGE_DEVICE_NOT_ALLOWED] = { .length = 1, .name = "AccessDenied"}
 };
 
 
