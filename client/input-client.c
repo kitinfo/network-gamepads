@@ -10,6 +10,7 @@
 #include <errno.h>
 #include <signal.h>
 #include <dirent.h>
+#include <limits.h>
 
 #if __BSD_SOURCE
 #include <sys/endian.h>
@@ -25,8 +26,8 @@
 #include "../common/protocol.h"
 #include "input-client.h"
 
-#define DEV_INPUT_DIR "/dev/input"
-#define EVENT_DEV_NAME "event"
+#define INPUT_NODES "/dev/input"
+#define EVENT_PREFIX "event"
 
 sig_atomic_t quit_signal = false;
 
@@ -40,7 +41,6 @@ bool get_abs_info(Config* config, int device_fd, int abs, struct input_absinfo* 
 }
 
 bool send_abs_info(int sock_fd, int device_fd, Config* config) {
-
 	int keys[] = {
 		ABS_X, ABS_Y, ABS_Z, ABS_RX, ABS_RY, ABS_RZ, ABS_HAT0X, ABS_HAT0Y
 	};
@@ -94,7 +94,7 @@ bool setup_device(int sock_fd, int device_fd, Config* config) {
 		}
 	}
 
-	logprintf(config->log, LOG_DEBUG, "Initiating SETUP\n");
+	logprintf(config->log, LOG_DEBUG, "Starting device setup\n");
 	if (!send_message(config->log, sock_fd, msg, msglen)) {
 		free(msg);
 		return false;
@@ -181,7 +181,7 @@ bool init_connect(int sock_fd, int device_fd, Config* config) {
 		return false;
 	}
 
-	logprintf(config->log, LOG_INFO, "Connected to slot: %d\n", buf[1]);
+	logprintf(config->log, LOG_INFO, "Connected to slot %d\n", buf[1]);
 	config->slot = buf[1];
 
 	return true;
@@ -203,8 +203,6 @@ int setType(int argc, char** argv, Config* config) {
 	} else {
 		return -1;
 	}
-
-	printf("type: 0x%zx\n", config->type);
 
 	return 1;
 }
@@ -278,102 +276,57 @@ int device_reopen(Config* config, char* file) {
 	return -1;
 }
 
-int is_event_device(const struct dirent* dir) {
-
-	return strncmp(EVENT_DEV_NAME, dir->d_name, strlen(EVENT_DEV_NAME)) == 0;
-}
-
-int event_sort(const struct dirent **a, const struct dirent **b) {
-	const char* sa = (*a)->d_name;
-	const char* sb = (*b)->d_name;
-	int len = strlen(EVENT_DEV_NAME);
-	int len_a = strlen(sa);
-	int len_b = strlen(sb);
-	int num_a = 0;
-	int num_b = 0;
-	if (len_a > len && len_b > len
-			&& !strncmp(EVENT_DEV_NAME, sa, len)
-			&& !strncmp(EVENT_DEV_NAME, sb, len)) {
-		num_a = strtoul(sa + len, NULL, 10);
-		num_b = strtoul(sb + len, NULL, 10);
-		return num_a - num_b;
-	} else {
-		return strcmp(sa, sb);
-	}
-}
-
-// from evtest
 int scan_devices(Config* config) {
-
-	struct dirent **namelist;
-
-	int ndev;
-	int i;
-	int status = 0;
-
-	ndev = scandir(DEV_INPUT_DIR, &namelist, is_event_device, event_sort);
-
-	if (ndev <= 0) {
-		logprintf(config->log, LOG_ERROR, "No device found.\n");
+	int fd = -1;
+	size_t u;
+	struct dirent* file = NULL;
+	char file_path[PATH_MAX * 2];
+	char device_name[UINPUT_MAX_NAME_SIZE];
+	DIR* input_files = opendir(INPUT_NODES);
+	if(!input_files){
+		logprintf(config->log, LOG_ERROR, "Failed to query input device nodes: %s\n", strerror(errno));
 		return 1;
 	}
-	char fname[256 + strlen(DEV_INPUT_DIR)];
-	char name[UINPUT_MAX_NAME_SIZE];
 
-	for (i = 0; i < ndev; i++) {
-		// size is defined in struct dirent
-		int fd = -1;
-		memset(fname, 0, sizeof(fname));
-		memset(fname, 0, sizeof(name));
+	for(file = readdir(input_files); file; file = readdir(input_files)){
+		if(!strncmp(file->d_name, EVENT_PREFIX, strlen(EVENT_PREFIX)) && file->d_type == DT_CHR){
+			snprintf(file_path, sizeof(file_path), "%s/%s", INPUT_NODES, file->d_name);
 
-		snprintf(fname, sizeof(fname), "%s/%s", DEV_INPUT_DIR, namelist[i]->d_name);
+			fd = open(file_path, O_RDONLY);
+			if(fd < 0){
+				logprintf(config->log, LOG_WARNING, "Problematic device %s: %s\n", file_path, strerror(errno));
+				continue;
+			}
 
-		fd = open(fname, O_RDONLY);
+			if(ioctl(fd, EVIOCGNAME(sizeof(device_name)), device_name) < 0){
+				logprintf(config->log, LOG_WARNING, "Failed to read name of %s: %s\n", file_path, strerror(errno));
+				close(fd);
+				continue;
+			}
 
-		if (fd < 0) {
-			logprintf(config->log, LOG_WARNING, "Cannot open device %s: %s\n", fname, strerror(errno));
-			continue;
-		}
-
-		if (ioctl(fd, EVIOCGNAME(sizeof(name)), name) < 0) {
-			logprintf(config->log, LOG_WARNING, "Cannot get name from device %s: %s\n", fname, strerror(errno));
+			printf("\t%s) %s (%s)\n", file->d_name + strlen(EVENT_PREFIX), device_name, file_path);
 			close(fd);
-			continue;
-		}
-
-		printf("[%3d] %s (%s)\n", i, name, fname);
-		close(fd);
-	}
-	int test = 1;
-	int in = -1;
-	while (test) {
-		printf("Select the device event number [0-%d]: ", ndev -1);
-		char input[10];
-		if (fgets(input, sizeof(input), stdin) == NULL) {
-			logprintf(config->log, LOG_ERROR, "Cannot read from stdin: %s", strerror(errno));
-			return 1;
-		}
-		char* endptr;
-		in = strtoul(input, &endptr, 10);
-		if (endptr == input) {
-			logprintf(config->log, LOG_ERROR, "Input was not a number.\n");
-		} else if (in >= ndev) {
-			logprintf(config->log, LOG_ERROR, "Input is not between 0 and %d\n", ndev -1);
-		} else {
-			test = 0;
 		}
 	}
 
-	int dev_len = snprintf(NULL, 0, "%s/%s", DEV_INPUT_DIR, namelist[in]->d_name);
-	config->dev_path = calloc(dev_len + 1, sizeof(char));
-	sprintf(config->dev_path, "%s/%s", DEV_INPUT_DIR, namelist[in]->d_name);
-
-	for (i = 0; i < ndev; i++) {
-		free(namelist[i]);
+	if(!fgets(device_name, sizeof(device_name), stdin)){
+		logprintf(config->log, LOG_ERROR, "Failed to read device identifier\n");
+		closedir(input_files);
+		return 1;
 	}
-	free(namelist);
 
-	return status;
+	//trim input
+	for(u = 0; u < strlen(device_name); u++){
+		if(!isprint(device_name[u])){
+			device_name[u] = 0;
+			break;
+		}
+	}
+
+	snprintf(file_path, sizeof(file_path), "%s/%s%s", INPUT_NODES, EVENT_PREFIX, device_name);
+	config->dev_path = strdup(file_path);
+	closedir(input_files);
+	return 0;
 }
 
 
@@ -458,7 +411,6 @@ int run(Config* config, int event_fd) {
 }
 
 int main(int argc, char** argv){
-
 	Config config = {
 		.log = {
 			.stream = stderr,
@@ -473,16 +425,16 @@ int main(int argc, char** argv){
 		.type = 0,
 		.slot = 0
 	};
-
 	int event_fd;
+	char* output[argc];
 
 	add_arguments(&config);
-	char* output[argc];
 	int outputc = eargs_parse(argc, argv, output, &config);
 
 	if(outputc < 1){
+		logprintf(config.log, LOG_ERROR, "Please select an input device:\n");
 		if (scan_devices(&config)) {
-			logprintf(config.log, LOG_ERROR, "Missing device\n");
+			logprintf(config.log, LOG_ERROR, "Failed to open input device\n");
 			return EXIT_FAILURE;
 		}
 	} else {
