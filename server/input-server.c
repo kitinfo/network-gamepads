@@ -15,10 +15,8 @@
 #include "../common/strdup.h"
 #include "../common/network.h"
 #include "../common/protocol.h"
-#include "../common/structures.h"
-#include "../common/uinput.h"
 
-
+#include "uinput.h"
 #include "input-server.h"
 
 volatile sig_atomic_t shutdown_server = 0;
@@ -39,8 +37,14 @@ int client_close(LOGGER log, gamepad_client* client, uint8_t slot, bool cleanup)
 		close(client->fd);
 		client->fd = -1;
 	}
-	client->last_ret = 0;
+	client->status = MESSAGE_RESERVED_UNCONN;
 	client->scan_offset = 0;
+
+	//remove this, as when reconnecting we either reuse the old device or re-setup a new one
+	//in the first case, we dont need to set the bits again
+	//in the second case, we want a clean slate
+	free(client->meta.enabled_events);
+	client->meta.enabled_events_length = 0;
 	return 0;
 }
 
@@ -107,7 +111,7 @@ bool client_hello(Config* config, gamepad_client* client, uint8_t slot) {
 			logprintf(config->log, LOG_WARNING, "[Wait%d] Invalid slot supplied\n", slot);
 		} else if (clients[msg->slot - 1].fd > 0) {
 			ret = MESSAGE_CLIENT_SLOT_IN_USE;
-			logprintf(config->log, LOG_WARNING, "[Wait%d] Slot occupoed\n", slot);
+			logprintf(config->log, LOG_WARNING, "[Wait%d] Slot occupied\n", slot);
 		}
 
 		if (ret > 0) {
@@ -173,7 +177,7 @@ bool client_hello(Config* config, gamepad_client* client, uint8_t slot) {
 	client->bytes_available = 0;
 	client->scan_offset = 0;
 	client->fd = -1;
-	clients[msg->slot - 1].last_ret = ret;
+	clients[msg->slot - 1].status = ret;
 
 	return true;
 }
@@ -193,27 +197,8 @@ int usage(int argc, char** argv, Config* config) {
 	return -1;
 }
 
-int set_limit(int argc, char** argv, Config* config) {
-	if (!strcmp(argv[1], "mouse")) {
-		config->limit |= DEV_TYPE_MOUSE;
-	} else if (!strcmp(argv[1], "keyboard")) {
-		config->limit |= DEV_TYPE_KEYBOARD;
-	} else if (!strcmp(argv[1], "gamepad")) {
-		config->limit |= DEV_TYPE_GAMEPAD;
-	} else if (!strcmp(argv[1], "xbox")) {
-		config->limit |= DEV_TYPE_XBOX;
-	} else {
-		logprintf(config->log, LOG_ERROR,
-				"Unknown device type %s\nTry gamepad, keyboard, mouse or xbox\n", argv[1]);
-		return -1;
-	}
-
-	return 1;
-}
-
 bool add_arguments(Config* config) {
 	eargs_addArgument("-h", "--help", usage, 0);
-	eargs_addArgument("-l", "--limit", set_limit, 1);
 	eargs_addArgumentString("-p", "--port", &config->port);
 	eargs_addArgumentString("-b", "--bind", &config->bindhost);
 	eargs_addArgumentString("-pw", "--password", &config->password);
@@ -227,7 +212,7 @@ int handle_password(Config* config, gamepad_client* client, PasswordMessage* msg
 
 	logprintf(config->log, LOG_DEBUG, "[%d] Validating authentication\n", slot);
 
-	if (client->last_ret != MESSAGE_PASSWORD_REQUIRED) {
+	if (client->status != MESSAGE_PASSWORD_REQUIRED) {
 		logprintf(config->log, LOG_WARNING,
 				"[%d] Protocol error\n", slot);
 		return sizeof(PasswordMessage) + msg->length;
@@ -246,7 +231,7 @@ int handle_password(Config* config, gamepad_client* client, PasswordMessage* msg
 		}
 	}
 
-	client->last_ret = message;
+	client->status = message;
 	if (!send_message(config->log, client->fd, &message, sizeof(message))) {
 		return -1;
 	}
@@ -257,7 +242,7 @@ int handle_password(Config* config, gamepad_client* client, PasswordMessage* msg
 // Handles a absinfo message. Returns the bytes used or -1 on failure.
 int handle_absinfo(Config* config, gamepad_client* client, ABSInfoMessage* msg, uint8_t slot) {
 	logprintf(config->log, LOG_INFO, "[%d] Absolute axis setup\n", slot);
-	if (client->last_ret != MESSAGE_SETUP_REQUIRED) {
+	if (client->status != MESSAGE_SETUP_REQUIRED) {
 		logprintf(config->log, LOG_WARNING,
 				"[%d] Protocol error\n", slot);
 		return -1;
@@ -277,13 +262,11 @@ int handle_device(Config* config, gamepad_client* client, DeviceMessage* msg, ui
 	logprintf(config->log, LOG_INFO, "[%d] Device setup\n", slot);
 
 	// the device message may only be send in setup required state.
-	if (client->last_ret != MESSAGE_SETUP_REQUIRED) {
+	if (client->status != MESSAGE_SETUP_REQUIRED) {
 		logprintf(config->log, LOG_WARNING,
 				"[%d] Protocol error\n", slot);
 		return -1;
 	}
-
-	client->meta.devtype = be64toh(msg->type);
 
 	client->meta.name = malloc(msg->length);
 	memcpy(client->meta.name, msg->name, msg->length);
@@ -296,14 +279,14 @@ int handle_setup_required(Config* config, gamepad_client* client, uint8_t* messa
 	uint8_t msg;
 
 	// setup required may only be send in success state.
-	if (client->last_ret != MESSAGE_SUCCESS) {
+	if (client->status != MESSAGE_SUCCESS) {
 		msg = MESSAGE_INVALID;
 		logprintf(config->log, LOG_WARNING,
 				"[%d] Protocol error\n", slot);
 		return -1;
 	} else {
 		msg = MESSAGE_SETUP_REQUIRED;
-		client->last_ret = msg;
+		client->status = msg;
 	}
 	if (!send_message(config->log, client->fd, &msg, 1)) {
 		return -1;
@@ -317,24 +300,43 @@ int handle_quit(Config* config, gamepad_client* client, uint8_t* msg, uint8_t sl
 	return -1;
 }
 
+int handle_request_event(Config* config, gamepad_client* client, RequestEventMessage* msg, uint8_t slot) {
+	uint8_t message;
+
+	if(client->status != MESSAGE_SETUP_REQUIRED){
+		message = MESSAGE_INVALID;
+		logprintf(config->log, LOG_WARNING, "[%d] Protocol error\n", slot);
+		send_message(config->log, client->fd, &message, sizeof(message));
+		return -1;
+
+	}
+	logprintf(config->log, LOG_DEBUG, "[%d] Enabling event type %02X code %X\n", slot, msg->type, msg->code);
+
+	//TODO filtering
+	
+	client->meta.enabled_events = realloc(client->meta.enabled_events, (client->meta.enabled_events_length + 1) * sizeof(struct enabled_event));
+	if(!client->meta.enabled_events){
+		fprintf(stderr, "Failed to allocate memory\n");
+		client->meta.enabled_events_length = 0;
+		return -1;
+	}
+
+	client->meta.enabled_events[client->meta.enabled_events_length].type = msg->type;
+	client->meta.enabled_events[client->meta.enabled_events_length].code = msg->code;
+	client->meta.enabled_events_length++;
+	return sizeof(RequestEventMessage);
+}
+
 // handles the setup end message. Returns the bytes used or -1 on failure.
 int handle_setup_end(Config* config, gamepad_client* client, uint8_t* msg, uint8_t slot) {
 	logprintf(config->log, LOG_DEBUG, "[%d] Setup done\n", slot);
 	uint8_t message;
 	// setup end message may only be send in setup required state.
-	if (client->last_ret != MESSAGE_SETUP_REQUIRED) {
+	if (client->status != MESSAGE_SETUP_REQUIRED) {
 		message = MESSAGE_INVALID;
 		logprintf(config->log, LOG_WARNING,
 				"[%d] Protocol error\n", slot);
 		send_message(config->log, client->fd, &message, sizeof(message));
-		return -1;
-	}
-	// check for device limitations
-	if (!(client->meta.devtype & config->limit)) {
-		logprintf(config->log, LOG_WARNING, "[%d] Device type 0x%zx not enabled\n", slot, client->meta.devtype);
-
-		uint8_t msg_na = MESSAGE_DEVICE_NOT_ALLOWED;
-		send_message(config->log, client->fd, &msg_na, sizeof(msg_na));
 		return -1;
 	}
 	if (!create_device(config->log, client, &client->meta)) {
@@ -344,7 +346,7 @@ int handle_setup_end(Config* config, gamepad_client* client, uint8_t* msg, uint8
 		.msg_type = MESSAGE_SUCCESS,
 		.slot = slot + 1
 	};
-	client->last_ret = MESSAGE_SUCCESS;
+	client->status = MESSAGE_SUCCESS;
 	if (!send_message(config->log, client->fd, &msg_succ, sizeof(msg_succ))) {
 		return -1;
 	}
@@ -354,7 +356,7 @@ int handle_setup_end(Config* config, gamepad_client* client, uint8_t* msg, uint8
 
 // handles data messages. Returns the bytes used or -1 on failure.
 int handle_data(Config* config, gamepad_client* client, DataMessage* msg, uint8_t slot) {
-	if (client->last_ret != MESSAGE_SUCCESS) {
+	if (client->status != MESSAGE_SUCCESS) {
 		logprintf(config->log, LOG_WARNING, "[%d] Protocol error\n", slot);
 		return sizeof(DataMessage);
 	}
@@ -412,6 +414,9 @@ bool client_data(Config* config, gamepad_client* client, uint8_t slot) {
 				break;
 			case MESSAGE_DEVICE:
 				ret = handle_device(config, client, (DeviceMessage*) msg, slot);
+				break;
+			case MESSAGE_REQUEST_EVENT:
+				ret = handle_request_event(config, client, (RequestEventMessage*) msg, slot);
 				break;
 			case MESSAGE_SETUP_REQUIRED:
 				ret = handle_setup_required(config, client, msg, slot);
@@ -479,11 +484,11 @@ bool recv_data(Config* config, gamepad_client* client, uint8_t slot) {
 
 // initializes the gamepad_client struct
 void init_client(gamepad_client* client) {
-	client->fd = -1;
-	client->ev_fd = -1;
-
-	client->scan_offset = 0;
-	client->bytes_available = 0;
+	gamepad_client empty = {
+		.fd = -1,
+		.ev_fd = -1
+	};
+	*client = empty;
 }
 
 int main(int argc, char** argv) {
@@ -499,7 +504,6 @@ int main(int argc, char** argv) {
 			.stream = stderr,
 			.verbosity = 0
 		},
-		.limit = 0,
 		.bindhost = getenv("SERVER_HOST") ? getenv("SERVER_HOST"):DEFAULT_HOST,
 		.port = getenv("SERVER_PORT") ? getenv("SERVER_PORT"):DEFAULT_PORT,
 		.password = getenv("SERVER_PW") ? getenv("SERVER_PW"):DEFAULT_PASSWORD
@@ -515,12 +519,6 @@ int main(int argc, char** argv) {
 	} else if (status > 0) {
 		logprintf(config.log, LOG_ERROR, "Unknown command line arguments.\n");
 		return usage(argc, argv, &config);
-	}
-
-	// enable all devices if no limit has been set
-	if (config.limit == 0) {
-		config.limit = UINT64_MAX;
-		logprintf(config.log, LOG_INFO, "Enabling all devices (Mask 0x%zx)\n", config.limit);
 	}
 
 	logprintf(config.log, LOG_INFO, "%s starting\nProtocol Version: %.2x\n", SERVER_VERSION, PROTOCOL_VERSION);

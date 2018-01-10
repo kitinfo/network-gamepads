@@ -1,4 +1,3 @@
-
 #include <inttypes.h>
 #include <linux/input.h>
 #include "protocol.h"
@@ -9,6 +8,7 @@ struct MessageInfo MESSAGE_TYPES_INFO[256] = {
 	[MESSAGE_PASSWORD] = { .length = sizeof(PasswordMessage), .name = "Password"},
 	[MESSAGE_ABSINFO] = {.length = sizeof(ABSInfoMessage), .name = "AbsInfo"},
 	[MESSAGE_DEVICE] = { .length = sizeof(DeviceMessage), .name = "Device"},
+	[MESSAGE_REQUEST_EVENT] = {.length = sizeof(RequestEventMessage), .name = "EventEnableRequest"},
 	[MESSAGE_SETUP_END] = { .length = 1, .name = "SetupDone"},
 	[MESSAGE_DATA] =  { .length = sizeof(DataMessage), .name = "Data"},
 	[MESSAGE_SUCCESS] = { .length = sizeof(SuccessMessage), .name = "Success"},
@@ -21,9 +21,7 @@ struct MessageInfo MESSAGE_TYPES_INFO[256] = {
 	[MESSAGE_CLIENT_SLOT_IN_USE] = { .length = 1, .name = "Occupied"},
 	[MESSAGE_CLIENT_SLOTS_EXHAUSTED] = { .length = 1, .name = "Exhausted"},
 	[MESSAGE_QUIT] = { .length = 1, .name = "Quit"},
-	[MESSAGE_DEVICE_NOT_ALLOWED] = { .length = 1, .name = "AccessDenied"}
 };
-
 
 char* get_message_name(uint8_t msg) {
 	return MESSAGE_TYPES_INFO[msg].name;
