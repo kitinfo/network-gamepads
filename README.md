@@ -59,13 +59,7 @@ It may be overridden by specifying the environment variable `SERVER_PW` or the c
 
 ### Client
 
-First, find out the device node you will want to stream to the server in the `/dev/input/` directory.
-The directory `/dev/input/by-id/` has symlinks that are named in a pretty readable way.
-
-To test whether a device node is the one you want, run `cat /dev/input/path/to/node` and press some keys.
-Each keypress should print some seemingly random data.
-
-Having found your device node, run `input-client [-t <type>] [-h <host>] [-n <name>] /dev/input/path/to/input/node`.
+To stream an input device connected to your local computer, run `input-client [-t <type>] [-h <host>] [-n <name>] [input device node]`.
 Optionally, you can specify some or all of the following parameters via environment variables or command line arguments:
 
 * `SERVER_HOST`: The host to connect to (Default: `::`)
@@ -85,7 +79,9 @@ Device types can be accumulated (Example: mouse and keyboard in one device: -t m
 
 The host (`-h`) argument specifies the server to connect to and will override a given `SERVER_HOST` environment variable.
 
-The name (`-n`) argument can be used to specify an optional name used on the server, eg. for mapping devices to players.
+The name (`-n`) argument can be used to specify an optional name used on the server, eg. for mapping devices to players or button mapping profiles.
+
+The last option, the input device node, is optional. If you do not supply one, the client will ask you which device you want to stream.
 
 While the client is running (and after it has successfully connected), input events generated should take effect
 on the computer running the server.
