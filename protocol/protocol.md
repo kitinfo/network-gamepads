@@ -1,6 +1,6 @@
 Network gamepads protocol documentation.
 
-This document describes version 3 (0x03) of the protocol.
+This document describes version 5 (0x05) of the protocol.
 
 # Security considerations
 
@@ -16,9 +16,6 @@ In order to (securely) send keyboard input to a remote X session, use
 ```
 # Introduction
 
-This is the second iteration of the network-gamepads protocol, this time
-using a binary encoding.
-
 The protocol consists of a set of messages, each starting
 with a one byte message type and followed by zero or more data
 bytes, the layout of which depends on the message type.
@@ -31,6 +28,7 @@ bytes, the layout of which depends on the message type.
 | ABSINFO                | 0x03       |
 | DEVICE                 | 0x04       |
 | SETUP_END              | 0x05       |
+| REQUEST_EVENT          | 0x06       |
 | DATA                   | 0x10       |
 | SUCCESS                | 0xF0       |
 | VERSION_MISMATCH       | 0xF1       |
@@ -42,7 +40,6 @@ bytes, the layout of which depends on the message type.
 | CLIENT_SLOT_IN_USE     | 0xF7       |
 | CLIENT_SLOTS_EXHAUSTED | 0xF8       |
 | QUIT                   | 0xF9       |
-| DEVICE_NOT_ALLOWED     | 0xFA       |
 
 # Client Messages
 
@@ -56,7 +53,7 @@ All messages are described in detail below.
 ```c
 struct HelloMessage {
 	uint8_t msg_type; /* must be 0x01 */
-	uint8_t version; /* must be PROTOCOL_VERSION (currently 0x03) */
+	uint8_t version; /* must be PROTOCOL_VERSION (currently 0x05) */
 	uint8_t slot; /* The client slot requested */
 }
 ```
@@ -146,7 +143,6 @@ The data part consists of
 struct DeviceMessage {
 	uint8_t msg_type; /* Must be 0x04 */
 	uint8_t length; /* length of name field */
-	uint64_t type; /* see device types */
 	struct input_id ids; /* see input.h */
 	char name[length]; /* the name to report for the device */
 }
@@ -161,10 +157,6 @@ The data part is as follows
 * (1 Byte) Name length
 	The length of the data in the `name` field. Must not exceed
 	`UINPUT_MAX_NAME_SIZE` bytes
-* (8 Bytes) Device type
-	The type of device to register on the server. This allows usage
-	of different sets of input controls. See the `Device types` table
-	for detailed information
 * (??? Bytes) Input device data structure
 	Extended information about the device to emulate on the server
 	`TODO Extend this`
@@ -176,22 +168,6 @@ The `DEVICE` message may optionally be followed by one or more `ABSINFO` message
 ### Possible responses
 
 The server will not issue a response until it receives a `SETUP_END` message.
-
-### Device types
-
-Device types enable different input controls on the server, such as absolute or relative
-axes or buttons.
-Device types may be combined by `OR`ing their types, enabling all input codes for the respective
-types.
-
-| name     | value   | description       |
-|----------|---------|-------------------|
-| unknown  | 0x0000  | Unknown device    |
-| mouse    | 0x0001  | Mouse      |
-| keyboard | 0x0002  | Keyboard  |
-| gamepad  | 0x0004  | Generic Gamepad |
-| xbox     | 0x0008  | XBox controller      |
-| abs      | 0x0010  | Enable absolute axes |
 
 ### Example
 
@@ -208,7 +184,7 @@ struct ABSInfoMessage {
 ```
 
 This message contains informations about the extents and capabilities of an absolute axis.
-The client should send this message for every absolute axis of the device it wants to use.
+The client must send this message for every absolute axis of the device it wants to use.
 
 The data part consists of
 
@@ -223,6 +199,38 @@ The server will not issue a response until it receives a `SETUP_END` message.
 ### Example
 
 `TODO`
+
+## The `REQUEST_EVENT` message
+
+```c
+struct RequestEventMessage {
+	uint8_t msg_type; /* Must be 0x06 */
+	uint16_t type;
+	uint16_t code;
+}
+```
+
+This message requests for a key scan code or axis to be enabled on the server device.
+The server may silently ignore this message according to configured black-/whitelists.
+The client must send this message for each type/code combination it will generate.
+
+The data part consists of
+
+* (2 Bytes) Type identifier (e.g. `EV_KEY`), as defined in `linux/input.h`
+* (2 Bytes) Code identifier (e.g. `KEY_A`), as defined in `linux/input.h`
+
+### Possible responses
+
+The server will not issue a response until it receives a `SETUP_END` message.
+
+### Example
+
+    Client -> Server
+    0x06 0x01 0x00 0x01 0x00
+
+* Message type: `REQUEST_EVENT`
+* Type: 0x00 01 (`EV_KEY`)
+* Code: 0x00 01 (`KEY_ESC`)
 
 ## The `SETUP_END` message
 
@@ -246,19 +254,22 @@ to send data.
 ```c
 struct DataMessage {
 	uint8_t msg_type; /* must be 0x10 */
-	struct input_event event; /* see linux/input.h */
+	uint16_t type;
+	uint16_t code;
+	int32_t value;
 }
 ```
 
 Sends an input event to the server for injection. The data may be filtered on the server
-according to the deivce type configured in the `DEVICE` message.
+according to configured black/whitelists.
 
 The data part consists of
 
-* (??? Bytes) Input event struct
-	See `linux/input.h` for details
-	The timestamp member of the structure must be constrained to 16bits
-	to match the format expected on the server.
+* (2 Bytes) Event type (e.g. `EV_KEY`), defined in `linux/input.h`
+* (2 Bytes) Event code (e.g. `KEY_ESC`), defined in `linux/input.h`
+* (4 Bytes) Event value
+
+The data part layout closely mirrors the `struct input_event` from `linux/input.h`.
 
 ### Possible responses
 
@@ -413,16 +424,4 @@ struct ClientSlotsExhausted {
 ```
 
 Indicates to the client that the server can not accept any new clients at this time.
-The server will terminate the connection after sending this response.
-
-## The `DEVICE_NOT_ALLOWED` response
-
-```c
-struct DeviceNotAllowedMessage {
-	uint8_t msg_type; /* must be 0xFA */
-}
-```
-
-This response indicates to the client that the chosen device capabilities are prohibited
-on the server.
 The server will terminate the connection after sending this response.
