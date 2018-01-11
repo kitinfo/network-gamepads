@@ -54,6 +54,7 @@ local msgtype = {
 	ABSINFO                = 0x03,
 	DEVICE                 = 0x04,
 	SETUP_END              = 0x05,
+	REQUEST_EVENT          = 0x06,
 	DATA                   = 0x10,
 	SUCCESS                = 0xF0,
 	VERSION_MISMATCH       = 0xF1,
@@ -94,17 +95,8 @@ local axismap = {
 	ABS_TILT_Y   = 0x1b,
 }
 
-local devtype = {
-	UNKOWN   = 0x00,
-	MOUSE    = 0x01,
-	KEYBOARD = 0x02,
-	GAMEPAD  = 0x04,
-	XBOX     = 0x08
-}
-
 local msgtype_valstr = makeValString(msgtype)
 local axis_valstr = makeValString(axismap)
-local devtype_valstr = makeValString(devtype)
 
 local hdr_fields = {
 	version  = ProtoField.uint8("ng.version", "Version", base.DEC),
@@ -118,7 +110,6 @@ local hdr_fields = {
 	fuzz     = ProtoField.int32("ng.absinfo.fuzz", "Fuzz", base.DEC),
 	flat     = ProtoField.int32("ng.absinfo.flat", "Flat", base.DEC),
 	resolution = ProtoField.int32("ng.absinfo.resolution", "Resolution", base.DEC),
-	devtype    = ProtoField.uint64("ng.type", "Type", base.HEX, devtype_valstr),
 	name       = ProtoField.string("ng.name", "Name", base.STRING),
 	password   = ProtoField.string("ng.password", "Password", base.STRING),
 	vendor     = ProtoField.uint16("ng.id.vendor", "Vendor", base.HEX),
@@ -127,7 +118,9 @@ local hdr_fields = {
 	idversion  = ProtoField.uint16("ng.id.version", "Version", base.HEX),
 	event_type = ProtoField.uint16("ng.event.type", "Type", base.HEX),
 	event_code = ProtoField.uint16("ng.event.code", "Code", base.HEX),
-	event_value= ProtoField.int32("ng.event.value", "Value", base.DEC)
+	event_value= ProtoField.int32("ng.event.value", "Value", base.DEC),
+	request_code = ProtoField.uint16("ng.code", "Code", base.HEX),
+	request_type = ProtoField.uint16("ng.type", "Type", base.HEX)
 }
 
 ngamepads_proto.fields = hdr_fields
@@ -225,13 +218,15 @@ dissectNGamepads = function(tvbuf, pktinfo, root, offset)
 	elseif msg_type_val == msgtype.DEVICE then
 		local len = tvbuf:range(offset + 1, 1)
 		tree:add(hdr_fields.length, len)
-		tree:add(hdr_fields.devtype, tvbuf:range(offset + 2, 8))
-		local id_tree = tree:add("struct input_id", tvbuf:range(offset + 10, 8))
-		id_tree:add(hdr_fields.bustype, tvbuf:range(offset + 10, 2))
-		id_tree:add(hdr_fields.vendor, tvbuf:range(offset + 12, 2))
-		id_tree:add(hdr_fields.product, tvbuf:range(offset + 14, 2))
-		id_tree:add(hdr_fields.idversion, tvbuf:range(offset + 16, 2))
-		tree:add(hdr_fields.name, tvbuf:range(offset + 18, len:uint()))
+		local id_tree = tree:add("struct input_id", tvbuf:range(offset + 2, 8))
+		id_tree:add(hdr_fields.bustype, tvbuf:range(offset + 2, 2))
+		id_tree:add(hdr_fields.vendor, tvbuf:range(offset + 4, 2))
+		id_tree:add(hdr_fields.product, tvbuf:range(offset + 6, 2))
+		id_tree:add(hdr_fields.idversion, tvbuf:range(offset + 8, 2))
+		tree:add(hdr_fields.name, tvbuf:range(offset + 10, len:uint()))
+	elseif msg_type_val == msgtype.REQUEST_EVENT then
+		tree:add(hdr_fields.request_type, tvbuf:range(offset + 1, 2))
+		tree:add(hdr_fields.request_code, tvbuf:range(offset + 3, 2))
 	elseif msg_type_val == msgtype.DATA then
 		tree:add(hdr_fields.event_type, tvbuf:range(offset + 1, 2))
 		tree:add(hdr_fields.event_code, tvbuf:range(offset + 3, 2))
@@ -272,8 +267,10 @@ checkNGamepadsLength = function(tvbuf, offset)
 		if msglen < 2 then
 			return -DESEGMENT_ONE_MORE_SEGMENT
 		else
-			return tvbuf:range(offset + 1, 1):uint() + 18
+			return tvbuf:range(offset + 1, 1):uint() + 10
 		end
+	elseif msgtype_val == msgtype.REQUEST_EVENT then
+		return 5
 	elseif msgtype_val == msgtype.DATA then
 		return 9
 	elseif msgtype_val == msgtype.VERSION_MISMATCH then
