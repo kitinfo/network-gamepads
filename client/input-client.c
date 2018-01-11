@@ -456,6 +456,8 @@ int main(int argc, char** argv){
 	add_arguments(&config);
 	int outputc = eargs_parse(argc, argv, output, &config);
 
+	printf("%s, starting up\n", VERSION);
+
 	if(outputc < 1){
 		logprintf(config.log, LOG_ERROR, "Please select an input device:\n");
 		if (scan_devices(&config)) {

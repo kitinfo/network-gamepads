@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define SERVER_VERSION "InputServer 1.2"
+#define SERVER_VERSION "InputServer 1.3"
 #define MAX_CLIENTS 8
 #define MAX_WAITING_CLIENTS 8
 
