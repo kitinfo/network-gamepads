@@ -57,29 +57,24 @@ These settings can be overridden by specifying the environment variables `SERVER
 To connect to the server, users need to provide a password. The default password is `foobar`.
 It may be overridden by specifying the environment variable `SERVER_PW` or the corresponding command line argument.
 
+To limit the types of keys/axes a client may use on the server, black- and whitelists are used.
+These contain lines space-separated `type code` pairs and either allow only these events (whitelists) or everything
+except these (blacklist). Example lists for the most used types can be found in [acls/](acls/).
+The default configuration allows all events.
+
+
 ### Client
 
-To stream an input device connected to your local computer, run `input-client [-t <type>] [-h <host>] [-n <name>] [input device node]`.
+To stream an input device connected to your local computer, run `input-client [-h <host>] [-n <name>] [input device node]`.
 Optionally, you can specify some or all of the following parameters via environment variables or command line arguments:
 
 * `SERVER_HOST`: The host to connect to (Default: `::`)
 * `SERVER_PORT`: The port to connect to (Default `9292`)
 * `SERVER_PW`: The password required for the server (Default `foobar`)
 
-Type (`-t`) can be one of the following:
-
-* `mouse`: a mouse device
-* `keyboard`: a keyboard device
-* `gamepad`: a gamepad device
-* `xbox`: the xbox controller
-* `abs`: abs inputs
-
-If the type is not specified the default type is used. It enables all device types. Not defining a device type is not recommended.
-Device types can be accumulated (Example: mouse and keyboard in one device: -t mouse -t keyboard).
-
 The host (`-h`) argument specifies the server to connect to and will override a given `SERVER_HOST` environment variable.
 
-The name (`-n`) argument can be used to specify an optional name used on the server, eg. for mapping devices to players or button mapping profiles.
+The name (`-n`) argument can be used to specify an optional name used on the server, eg. for mapping devices to players or button mapping profiles. This name is also used as the `evdev` device name on the server.
 
 The last option, the input device node, is optional. If you do not supply one, the client will ask you which device you want to stream.
 
@@ -92,12 +87,12 @@ on the computer running the server.
 
 The client component first tries to open the supplied device node for exclusive access, preventing other
 clients such as X11/xorg from also reacting to the input (Hence why starting the client on primary input devices is
-not really advisable). After opening the device node, the client reads `struct input_event` data objects and sends them
-to the server.
+not really advisable). After opening the device node, the client reads `struct input_event` data objects and sends
+them to the server.
 
-The server uses libevdev to create virtual device nodes and inject the streamed events (after filtering them somewhat)
-into them. The events are then processed by the X server on the remote machine and treated as if the input devices
-were attached directly.
+The server uses the `uinput` kernel facility to create virtual device nodes and inject the streamed events
+(after filtering them somewhat) into them. The events are then processed by the X server on the remote machine
+and treated as if the input devices were attached directly.
 
 ## Protocol
 

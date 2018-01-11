@@ -40,30 +40,62 @@ bool get_abs_info(Config* config, int device_fd, int abs, struct input_absinfo* 
 	return true;
 }
 
-bool send_abs_info(int sock_fd, int device_fd, Config* config) {
-	int keys[] = {
-		ABS_X, ABS_Y, ABS_Z, ABS_RX, ABS_RY, ABS_RZ, ABS_HAT0X, ABS_HAT0Y
-	};
+bool send_key_info(int sock_fd, int device_fd, Config* config) {
 
-	int i;
-	ABSInfoMessage msg = {
+	unsigned long types[EV_MAX];
+	unsigned long keys[(KEY_MAX - 1) / (sizeof(unsigned long) * 8) + 1];
+
+	RequestEventMessage msg = {0};
+	msg.msg_type = MESSAGE_REQUEST_EVENT;
+
+	memset(&types, 0, sizeof(types));
+
+	int t_bytes = ioctl(device_fd, EVIOCGBIT(0, EV_MAX), types);
+	if (t_bytes <= 0) {
+		logprintf(config->log, LOG_ERROR, "Error getting EV types: %s.\n", strerror(errno));
+		return 0;
+	}
+
+	int i, j;
+	int k_bytes;
+	ABSInfoMessage abs_msg = {
 		.msg_type = MESSAGE_ABSINFO
 	};
-	for (i = 0; i < sizeof(keys) / sizeof(int); i++) {
-		msg.axis = keys[i];
-		memset(&msg.info, 0, sizeof(msg.info));
-		if (!get_abs_info(config, device_fd, keys[i], &msg.info)) {
-			continue;
-		}
+	for (i = 0; i < EV_MAX; i++) {
+		if ((types[i / (sizeof(unsigned long) * 8)] & ((unsigned long) 1 << i % (sizeof(unsigned long) * 8))) > 0) {
+			memset(&keys, 0, sizeof(keys));
 
-		if (msg.info.minimum != msg.info.maximum) {
-			if (!send_message(config->log, sock_fd, &msg, sizeof(msg))) {
+			k_bytes = ioctl(device_fd, EVIOCGBIT(i, sizeof(keys)), keys) ;
+			if (k_bytes < 0) {
+				logprintf(config->log, LOG_ERROR, "Error getting %d type bits: %s.\n", i, strerror(errno));
 				return false;
+			}
+
+			for (j = 0; j < k_bytes * 8; j++) {
+				if ((keys[j / (sizeof(unsigned long) * 8)] & ((unsigned long) 1 << j % (sizeof(unsigned long) * 8))) > 0) {
+					logprintf(config->log, LOG_DEBUG, "%d:%d bit enabled\n", i, j);
+					msg.type = i;
+					msg.code = j;
+
+					if (!send_message(config->log, sock_fd, &msg, sizeof(msg))) {
+						return false;
+					}
+
+					if (i == EV_ABS) {
+						memset(&abs_msg.info, 0, sizeof(abs_msg.info));
+						if (!get_abs_info(config, device_fd, j, &abs_msg.info)) {
+							return false;
+						}
+						abs_msg.axis = j;
+						if (!send_message(config->log, sock_fd, &abs_msg, sizeof(abs_msg))) {
+							return false;
+						}
+					}
+				}
 			}
 		}
 	}
 
-	logprintf(config->log, LOG_DEBUG, "Absolute axes synchronized\n");
 	return true;
 }
 
@@ -74,8 +106,6 @@ bool setup_device(int sock_fd, int device_fd, Config* config) {
 
 	msg->msg_type = MESSAGE_DEVICE;
 	msg->length = UINPUT_MAX_NAME_SIZE;
-	msg->type = htobe64(config->type);
-
 
 	if (ioctl(device_fd, EVIOCGID, &(msg->id)) < 0) {
 		logprintf(config->log, LOG_ERROR, "Failed to query device ID: %s\n", strerror(errno));
@@ -102,9 +132,10 @@ bool setup_device(int sock_fd, int device_fd, Config* config) {
 
 	free(msg);
 
-	if (!send_abs_info(sock_fd, device_fd, config)) {
+	if (!send_key_info(sock_fd, device_fd, config)) {
 		return false;
 	}
+
 	uint8_t msg_type = MESSAGE_SETUP_END;
 	if (!send_message(config->log, sock_fd, &msg_type, 1)) {
 		return false;
@@ -144,14 +175,24 @@ bool init_connect(int sock_fd, int device_fd, Config* config) {
 	} else if (buf[0] == MESSAGE_PASSWORD_REQUIRED) {
 		logprintf(config->log, LOG_INFO, "Exchanging authentication...\n");
 		int pwlen = strlen(config->password) + 1;
+
+		if (pwlen > 254) {
+			logprintf(config->log, LOG_ERROR, "Password is too long.\n");
+			return false;
+		}
 		// msg_type byte + length byte + pwlen
-		PasswordMessage* passwordMessage = malloc(2 + pwlen);
+		PasswordMessage* passwordMessage = calloc(2 + strlen(config->password) + 1, sizeof(char));
+
+		if (!passwordMessage) {
+			logprintf(config->log, LOG_ERROR, "Cannot allocate memory.\n");
+			return false;
+		}
 
 		passwordMessage->msg_type = MESSAGE_PASSWORD;
-		passwordMessage->length = pwlen;
-		strncpy(passwordMessage->password, config->password, pwlen);
+		passwordMessage->length = strlen(config->password) + 1;
+		strcpy((char*)&(passwordMessage->password), config->password);
 
-		if (!send_message(config->log, sock_fd, passwordMessage, 2 + pwlen)) {
+		if (!send_message(config->log, sock_fd, passwordMessage, 2 + strlen(config->password) + 1)) {
 			free(passwordMessage);
 			return false;
 		}
@@ -182,6 +223,7 @@ bool init_connect(int sock_fd, int device_fd, Config* config) {
 	}
 
 	logprintf(config->log, LOG_INFO, "Connected to slot %d\n", buf[1]);
+	printf("Ready...\n");
 	config->slot = buf[1];
 
 	return true;
@@ -189,22 +231,6 @@ bool init_connect(int sock_fd, int device_fd, Config* config) {
 
 void quit() {
 	quit_signal = true;
-}
-
-int setType(int argc, char** argv, Config* config) {
-	if (!strcmp(argv[1], "mouse")) {
-		config->type |= DEV_TYPE_MOUSE;
-	} else if (!strcmp(argv[1], "gamepad")) {
-		config->type |= DEV_TYPE_GAMEPAD;
-	} else if (!strcmp(argv[1], "keyboard")) {
-		config->type |= DEV_TYPE_KEYBOARD;
-	} else if (!strcmp(argv[1], "xbox")) {
-		config->type |= DEV_TYPE_XBOX;
-	} else {
-		return -1;
-	}
-
-	return 1;
 }
 
 int usage(int argc, char** argv, Config* config) {
@@ -217,7 +243,6 @@ int usage(int argc, char** argv, Config* config) {
 			"    -p, --port              - Specify InputServer port\n"
 			"    -n, --name              - Specify a name for mapping on the server\n"
 			"    -pw,--password <pw>     - Set a connection password\n"
-			"    -t, --type <type>       - Device type (required)\n"
 			"    -v, --verbosity <level> - Debug verbosity (0: ERROR to 5: DEBUG)\n"
 			,config->program_name, config->program_name);
 	return -1;
@@ -238,7 +263,6 @@ int set_slot(int argc, char** argv, Config* config) {
 }
 
 void add_arguments(Config* config) {
-	eargs_addArgument("-t", "--type", setType, 1);
 	eargs_addArgument("-?", "--help", usage, 0);
 	eargs_addArgumentString("-h", "--host", &config->host);
 	eargs_addArgumentString("-n", "--name", &config->dev_name);
@@ -422,11 +446,14 @@ int main(int argc, char** argv){
 		.type = 0,
 		.slot = 0
 	};
+
 	int event_fd;
 	char* output[argc];
 
 	add_arguments(&config);
 	int outputc = eargs_parse(argc, argv, output, &config);
+
+	printf("%s, starting up\n", VERSION);
 
 	if(outputc < 1){
 		logprintf(config.log, LOG_ERROR, "Please select an input device:\n");
@@ -446,6 +473,7 @@ int main(int argc, char** argv){
 		return EXIT_FAILURE;
 	}
 
+	printf("Connection negotiated, now streaming\n");
 	int status = run(&config, event_fd);
 	close(event_fd);
 	free(config.dev_path);
