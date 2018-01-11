@@ -44,6 +44,7 @@ int client_close(LOGGER log, gamepad_client* client, uint8_t slot, bool cleanup)
 	//in the first case, we dont need to set the bits again
 	//in the second case, we want a clean slate
 	free(client->meta.enabled_events);
+	client->meta.enabled_events = NULL;
 	client->meta.enabled_events_length = 0;
 	return 0;
 }
@@ -241,7 +242,7 @@ int handle_password(Config* config, gamepad_client* client, PasswordMessage* msg
 
 // Handles a absinfo message. Returns the bytes used or -1 on failure.
 int handle_absinfo(Config* config, gamepad_client* client, ABSInfoMessage* msg, uint8_t slot) {
-	logprintf(config->log, LOG_INFO, "[%d] Absolute axis setup\n", slot);
+	logprintf(config->log, LOG_INFO, "[%d] Absolute axis %u setup\n", slot, msg->axis);
 	if (client->status != MESSAGE_SETUP_REQUIRED) {
 		logprintf(config->log, LOG_WARNING,
 				"[%d] Protocol error\n", slot);

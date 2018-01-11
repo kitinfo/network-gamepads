@@ -69,6 +69,9 @@ bool create_device(LOGGER log, gamepad_client* client, struct device_meta* meta)
 	struct uinput_user_dev ui_dev = {
 		.id = meta->id
 	};
+	struct uinput_abs_setup abs_setup = {
+		0
+	};
 
 	if(uinput_fd < 0) {
 		logprintf(log, LOG_ERROR, "Failed to access uinput: %s\n", strerror(errno));
@@ -99,10 +102,15 @@ bool create_device(LOGGER log, gamepad_client* client, struct device_meta* meta)
 		else{
 			//set up absolute axes
 			for(u = 0; u < ABS_CNT; u++){
-				if(ioctl(uinput_fd, UI_ABS_SETUP, meta->absinfo + u)){
-					logprintf(log, LOG_WARNING, "Failed to set up absolute axis: %s\n", strerror(errno));
-					close(uinput_fd);
-					return false;
+				if(meta->absinfo[u].maximum || meta->absinfo[u].minimum){
+					logprintf(log, LOG_INFO, "Setting up absolute axis %zu\n", u);
+					abs_setup.code = u;
+					abs_setup.absinfo = meta->absinfo[u];
+					if(ioctl(uinput_fd, UI_ABS_SETUP, &abs_setup)){
+						logprintf(log, LOG_WARNING, "Failed to set up absolute axis: %s\n", strerror(errno));
+						close(uinput_fd);
+						return false;
+					}
 				}
 			}
 		}
@@ -136,6 +144,9 @@ bool create_device(LOGGER log, gamepad_client* client, struct device_meta* meta)
 }
 
 bool cleanup_device(LOGGER log, gamepad_client* client) {
+	struct device_meta empty = {
+		0
+	};
 	if (client->ev_fd < 0) {
 		return true;
 	}
@@ -149,6 +160,8 @@ bool cleanup_device(LOGGER log, gamepad_client* client) {
 	client->ev_fd = -1;
 
 	free(client->meta.name);
-	client->meta.name = NULL;
+	free(client->meta.enabled_events);
+
+	client->meta = empty;
 	return true;
 }

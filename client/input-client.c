@@ -198,7 +198,7 @@ bool init_connect(int sock_fd, int device_fd, Config* config) {
 		logprintf(config->log, LOG_INFO, "Exchanging authentication...\n");
 		int pwlen = strlen(config->password) + 1;
 
-		if (pwlen > 255) {
+		if (pwlen > 254) {
 			logprintf(config->log, LOG_ERROR, "Password is too long.\n");
 			return false;
 		}
@@ -495,6 +495,7 @@ int main(int argc, char** argv){
 		return EXIT_FAILURE;
 	}
 
+	printf("Connection negotiated, now streaming\n");
 	int status = run(&config, event_fd);
 	close(event_fd);
 	free(config.dev_path);
