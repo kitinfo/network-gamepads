@@ -245,6 +245,7 @@ bool init_connect(int sock_fd, int device_fd, Config* config) {
 	}
 
 	logprintf(config->log, LOG_INFO, "Connected to slot %d\n", buf[1]);
+	printf("Ready...\n");
 	config->slot = buf[1];
 
 	return true;
