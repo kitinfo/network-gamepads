@@ -278,7 +278,7 @@ int device_reopen(Config* config, char* file, int* fd) {
 
 	while (!quit_signal && counter != 0) {
 		*fd = open(file, O_RDONLY);
-		if (fd >= 0) {
+		if (*fd >= 0) {
 			//get exclusive control
 			int grab = 1;
  			if (ioctl(*fd, EVIOCGRAB, &grab) < 0) {
