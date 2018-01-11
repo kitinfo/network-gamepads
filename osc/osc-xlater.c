@@ -66,6 +66,46 @@ osc_control* osc_controls = NULL;
 
 // THIS IS CURRENTLY PRETTY HACKY AND NOT USER FRIENDLY AT ALL
 
+int enable_codes(int fd) {
+
+	int i = 0;
+	RequestEventMessage evmsg = {
+		.msg_type = MESSAGE_REQUEST_EVENT
+	};
+	ABSInfoMessage abs = {
+		.msg_type = MESSAGE_ABSINFO
+	};
+
+	gp_control control;
+	int j;
+
+	while (gamepad_controls[i].name) {
+		printf("send enable: %d\n", i);
+		control = gamepad_controls[i];
+
+		if (control.type == EV_ABS) {
+			for (j = 0; j < control.num_channels; j++) {
+				memset(&abs.info, 0, sizeof(abs.info));
+
+				abs.axis = control.channels[j].code;
+				abs.info.minimum = control.channels[j].min;
+				abs.info.maximum = control.channels[j].max;
+
+				send(fd, &abs, sizeof(abs), 0);
+			}
+		} else {
+			evmsg.type = control.type;
+			evmsg.code = control.channels[0].code;
+			send(fd, &evmsg, sizeof(evmsg), 0);
+		}
+
+		i++;
+	}
+
+	return 0;
+}
+
+
 float osc_param_float(uint8_t* buffer, unsigned index){
 	unsigned u;
 	union{
@@ -167,11 +207,14 @@ int input_negotiate(int fd, char* devname, char* password){
 		DeviceMessage* dev_msg = calloc(sizeof(DeviceMessage) + strlen(devname) + 1, sizeof(char));
 		dev_msg->msg_type = MESSAGE_DEVICE;
 		dev_msg->length = strlen(devname) + 1;
-		dev_msg->type = 2;
 		strncpy(dev_msg->name, devname, dev_msg->length);
 
 		send(fd, dev_msg, sizeof(DeviceMessage) + dev_msg->length, 0);
 		free(dev_msg);
+
+		if (enable_codes(fd) < 0) {
+			return -1;
+		}
 
 		uint8_t setup_end = MESSAGE_SETUP_END;
 		send(fd, &setup_end, sizeof(uint8_t), 0);
