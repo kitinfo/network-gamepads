@@ -297,10 +297,6 @@ The server will destroy the input node on the server and terminate the client co
 
 Connection termination
 
-### Example
-
-`TODO`
-
 # Server responses
 
 The server responds to commands by the clients using the following response
