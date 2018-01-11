@@ -40,11 +40,6 @@ bool get_abs_info(Config* config, int device_fd, int abs, struct input_absinfo* 
 	return true;
 }
 
-bool test_bit(int i, unsigned long keys[EV_MAX]) {
-
-	return keys[i / 64] % i % 64;
-}
-
 bool send_key_info(int sock_fd, int device_fd, Config* config) {
 
 	unsigned long types[EV_MAX];
