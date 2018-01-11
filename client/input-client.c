@@ -40,11 +40,6 @@ bool get_abs_info(Config* config, int device_fd, int abs, struct input_absinfo* 
 	return true;
 }
 
-bool test_bit(int i, unsigned long keys[EV_MAX]) {
-
-	return keys[i / 64] % i % 64;
-}
-
 bool send_key_info(int sock_fd, int device_fd, Config* config) {
 
 	unsigned long types[EV_MAX];
@@ -63,7 +58,9 @@ bool send_key_info(int sock_fd, int device_fd, Config* config) {
 
 	int i, j;
 	int k_bytes;
-
+	ABSInfoMessage abs_msg = {
+		.msg_type = MESSAGE_ABSINFO
+	};
 	for (i = 0; i < EV_MAX; i++) {
 		if ((types[i / (sizeof(unsigned long) * 8)] & ((unsigned long) 1 << i % (sizeof(unsigned long) * 8))) > 0) {
 			memset(&keys, 0, sizeof(keys));
@@ -83,38 +80,22 @@ bool send_key_info(int sock_fd, int device_fd, Config* config) {
 					if (!send_message(config->log, sock_fd, &msg, sizeof(msg))) {
 						return false;
 					}
+
+					if (i == EV_ABS) {
+						memset(&abs_msg.info, 0, sizeof(abs_msg.info));
+						if (!get_abs_info(config, device_fd, j, &abs_msg.info)) {
+							return false;
+						}
+						abs_msg.axis = j;
+						if (!send_message(config->log, sock_fd, &abs_msg, sizeof(abs_msg))) {
+							return false;
+						}
+					}
 				}
 			}
 		}
 	}
 
-	return true;
-}
-
-bool send_abs_info(int sock_fd, int device_fd, Config* config) {
-	int keys[] = {
-		ABS_X, ABS_Y, ABS_Z, ABS_RX, ABS_RY, ABS_RZ, ABS_HAT0X, ABS_HAT0Y
-	};
-
-	int i;
-	ABSInfoMessage msg = {
-		.msg_type = MESSAGE_ABSINFO
-	};
-	for (i = 0; i < sizeof(keys) / sizeof(int); i++) {
-		msg.axis = keys[i];
-		memset(&msg.info, 0, sizeof(msg.info));
-		if (!get_abs_info(config, device_fd, keys[i], &msg.info)) {
-			continue;
-		}
-
-		if (msg.info.minimum != msg.info.maximum) {
-			if (!send_message(config->log, sock_fd, &msg, sizeof(msg))) {
-				return false;
-			}
-		}
-	}
-
-	logprintf(config->log, LOG_DEBUG, "Absolute axes synchronized\n");
 	return true;
 }
 
@@ -155,9 +136,6 @@ bool setup_device(int sock_fd, int device_fd, Config* config) {
 		return false;
 	}
 
-	if (!send_abs_info(sock_fd, device_fd, config)) {
-		return false;
-	}
 	uint8_t msg_type = MESSAGE_SETUP_END;
 	if (!send_message(config->log, sock_fd, &msg_type, 1)) {
 		return false;
@@ -245,6 +223,7 @@ bool init_connect(int sock_fd, int device_fd, Config* config) {
 	}
 
 	logprintf(config->log, LOG_INFO, "Connected to slot %d\n", buf[1]);
+	printf("Ready...\n");
 	config->slot = buf[1];
 
 	return true;
