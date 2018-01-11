@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define SERVER_VERSION "InputServer 1.2"
+#define SERVER_VERSION "InputServer 1.3"
 #define MAX_CLIENTS 8
 #define MAX_WAITING_CLIENTS 8
 
@@ -186,13 +186,11 @@ bool client_hello(Config* config, gamepad_client* client, uint8_t slot) {
 int usage(int argc, char** argv, Config* config) {
 	printf("%s usage:\n"
 			"%s [<options>]\n"
-			"    -b,  --bind <bind>          - sets the bind address\n"
-			"    -l,  --limit <type>         - limit device types to the given one\n"
-			"                                  type is mouse, keyboard or gamepad\n"
-			"    -h,  --help                 - show this help\n"
-			"    -p,  --port <port>          - sets the port\n"
-			"    -pw, --password <password>  - sets the password\n"
-			"    -v,  --verbosity <level>    - sets the level of verbosity (0: ERROR - 4: ALL_IO)\n"
+			"    -b,  --bind <bind>          - Address to bind to\n"
+			"    -p,  --port <port>          - Port to use\n"
+			"    -h,  --help                 - Print this help message\n"
+			"    -pw, --password <password>  - Connection password\n"
+			"    -v,  --verbosity <level>    - Verbosity level (0 (errors only) - 4 (all I/O))\n"
 			, config->program_name, config->program_name);
 
 	return -1;

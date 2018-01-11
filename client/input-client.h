@@ -1,6 +1,8 @@
 #pragma once
 #include "../libs/logger.h"
 
+#define VERSION "InputClient 1.3"
+
 typedef struct {
 	LOGGER log;
 	char* program_name;
