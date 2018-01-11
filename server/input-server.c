@@ -400,7 +400,7 @@ bool client_data(Config* config, gamepad_client* client, uint8_t slot) {
 
 		// we need additional bytes
 		if (client->bytes_available < bytes) {
-			logprintf(config->log, LOG_DEBUG, "[%d] Short read\n", slot);
+			logprintf(config->log, LOG_DEBUG, "[%d] Short read, expected %zu\n", slot, bytes);
 			return true;
 		}
 

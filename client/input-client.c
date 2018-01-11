@@ -74,8 +74,6 @@ bool setup_device(int sock_fd, int device_fd, Config* config) {
 
 	msg->msg_type = MESSAGE_DEVICE;
 	msg->length = UINPUT_MAX_NAME_SIZE;
-	msg->type = htobe64(config->type);
-
 
 	if (ioctl(device_fd, EVIOCGID, &(msg->id)) < 0) {
 		logprintf(config->log, LOG_ERROR, "Failed to query device ID: %s\n", strerror(errno));
@@ -143,15 +141,14 @@ bool init_connect(int sock_fd, int device_fd, Config* config) {
 		return false;
 	} else if (buf[0] == MESSAGE_PASSWORD_REQUIRED) {
 		logprintf(config->log, LOG_INFO, "Exchanging authentication...\n");
-		int pwlen = strlen(config->password) + 1;
+
 		// msg_type byte + length byte + pwlen
-		PasswordMessage* passwordMessage = malloc(2 + pwlen);
-
+		PasswordMessage* passwordMessage = calloc(2 + strlen(config->password) + 1, sizeof(char));
 		passwordMessage->msg_type = MESSAGE_PASSWORD;
-		passwordMessage->length = pwlen;
-		strncpy(passwordMessage->password, config->password, pwlen);
+		passwordMessage->length = strlen(config->password);
+		strcpy((char*)&(passwordMessage->password), config->password);
 
-		if (!send_message(config->log, sock_fd, passwordMessage, 2 + pwlen)) {
+		if (!send_message(config->log, sock_fd, passwordMessage, 2 + strlen(config->password) + 1)) {
 			free(passwordMessage);
 			return false;
 		}
@@ -191,22 +188,6 @@ void quit() {
 	quit_signal = true;
 }
 
-int setType(int argc, char** argv, Config* config) {
-	if (!strcmp(argv[1], "mouse")) {
-		config->type |= DEV_TYPE_MOUSE;
-	} else if (!strcmp(argv[1], "gamepad")) {
-		config->type |= DEV_TYPE_GAMEPAD;
-	} else if (!strcmp(argv[1], "keyboard")) {
-		config->type |= DEV_TYPE_KEYBOARD;
-	} else if (!strcmp(argv[1], "xbox")) {
-		config->type |= DEV_TYPE_XBOX;
-	} else {
-		return -1;
-	}
-
-	return 1;
-}
-
 int usage(int argc, char** argv, Config* config) {
 	printf("%s usage:\n"
 			"%s [<options>] <device>\n"
@@ -217,7 +198,6 @@ int usage(int argc, char** argv, Config* config) {
 			"    -p, --port              - Specify InputServer port\n"
 			"    -n, --name              - Specify a name for mapping on the server\n"
 			"    -pw,--password <pw>     - Set a connection password\n"
-			"    -t, --type <type>       - Device type (required)\n"
 			"    -v, --verbosity <level> - Debug verbosity (0: ERROR to 5: DEBUG)\n"
 			,config->program_name, config->program_name);
 	return -1;
@@ -238,7 +218,6 @@ int set_slot(int argc, char** argv, Config* config) {
 }
 
 void add_arguments(Config* config) {
-	eargs_addArgument("-t", "--type", setType, 1);
 	eargs_addArgument("-?", "--help", usage, 0);
 	eargs_addArgumentString("-h", "--host", &config->host);
 	eargs_addArgumentString("-n", "--name", &config->dev_name);

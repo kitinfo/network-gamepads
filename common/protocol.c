@@ -1,5 +1,4 @@
 #include <inttypes.h>
-#include <linux/input.h>
 #include "protocol.h"
 
 struct MessageInfo MESSAGE_TYPES_INFO[256] = {
