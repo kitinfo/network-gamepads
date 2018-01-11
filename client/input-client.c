@@ -40,6 +40,57 @@ bool get_abs_info(Config* config, int device_fd, int abs, struct input_absinfo* 
 	return true;
 }
 
+bool test_bit(int i, unsigned long keys[EV_MAX]) {
+
+	return keys[i / 64] % i % 64;
+}
+
+bool send_key_info(int sock_fd, int device_fd, Config* config) {
+
+	unsigned long types[EV_MAX];
+	unsigned long keys[(KEY_MAX - 1) / (sizeof(unsigned long) * 8) + 1];
+
+	RequestEventMessage msg = {0};
+	msg.msg_type = MESSAGE_REQUEST_EVENT;
+
+	memset(&types, 0, sizeof(types));
+
+	int t_bytes = ioctl(device_fd, EVIOCGBIT(0, EV_MAX), types);
+	if (t_bytes <= 0) {
+		logprintf(config->log, LOG_ERROR, "Error getting EV types: %s.\n", strerror(errno));
+		return 0;
+	}
+
+	int i, j;
+	int k_bytes;
+
+	for (i = 0; i < EV_MAX; i++) {
+		if ((types[i / (sizeof(unsigned long) * 8)] & ((unsigned long) 1 << i % (sizeof(unsigned long) * 8))) > 0) {
+			memset(&keys, 0, sizeof(keys));
+
+			k_bytes = ioctl(device_fd, EVIOCGBIT(i, sizeof(keys)), keys) ;
+			if (k_bytes < 0) {
+				logprintf(config->log, LOG_ERROR, "Error getting %d type bits: %s.\n", i, strerror(errno));
+				return false;
+			}
+
+			for (j = 0; j < k_bytes * 8; j++) {
+				if ((keys[j / (sizeof(unsigned long) * 8)] & ((unsigned long) 1 << j % (sizeof(unsigned long) * 8))) > 0) {
+					logprintf(config->log, LOG_DEBUG, "%d:%d bit enabled\n", i, j);
+					msg.type = i;
+					msg.code = j;
+
+					if (!send_message(config->log, sock_fd, &msg, sizeof(msg))) {
+						return false;
+					}
+				}
+			}
+		}
+	}
+
+	return true;
+}
+
 bool send_abs_info(int sock_fd, int device_fd, Config* config) {
 	int keys[] = {
 		ABS_X, ABS_Y, ABS_Z, ABS_RX, ABS_RY, ABS_RZ, ABS_HAT0X, ABS_HAT0Y
@@ -100,6 +151,10 @@ bool setup_device(int sock_fd, int device_fd, Config* config) {
 
 	free(msg);
 
+	if (!send_key_info(sock_fd, device_fd, config)) {
+		return false;
+	}
+
 	if (!send_abs_info(sock_fd, device_fd, config)) {
 		return false;
 	}
@@ -141,11 +196,22 @@ bool init_connect(int sock_fd, int device_fd, Config* config) {
 		return false;
 	} else if (buf[0] == MESSAGE_PASSWORD_REQUIRED) {
 		logprintf(config->log, LOG_INFO, "Exchanging authentication...\n");
+		int pwlen = strlen(config->password) + 1;
 
+		if (pwlen > 255) {
+			logprintf(config->log, LOG_ERROR, "Password is too long.\n");
+			return false;
+		}
 		// msg_type byte + length byte + pwlen
 		PasswordMessage* passwordMessage = calloc(2 + strlen(config->password) + 1, sizeof(char));
+
+		if (!passwordMessage) {
+			logprintf(config->log, LOG_ERROR, "Cannot allocate memory.\n");
+			return false;
+		}
+
 		passwordMessage->msg_type = MESSAGE_PASSWORD;
-		passwordMessage->length = strlen(config->password);
+		passwordMessage->length = strlen(config->password) + 1;
 		strcpy((char*)&(passwordMessage->password), config->password);
 
 		if (!send_message(config->log, sock_fd, passwordMessage, 2 + strlen(config->password) + 1)) {
@@ -404,6 +470,7 @@ int main(int argc, char** argv){
 		.type = 0,
 		.slot = 0
 	};
+
 	int event_fd;
 	char* output[argc];
 

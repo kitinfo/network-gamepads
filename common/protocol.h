@@ -46,7 +46,7 @@ typedef struct {
 typedef struct {
 	uint8_t msg_type;
 	uint8_t length;
-	char* password;
+	char password[];
 } PasswordMessage;
 
 typedef struct {
