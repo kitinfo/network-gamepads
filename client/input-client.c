@@ -62,6 +62,9 @@ bool send_key_info(int sock_fd, int device_fd, Config* config) {
 		.msg_type = MESSAGE_ABSINFO
 	};
 	for (i = 0; i < EV_MAX; i++) {
+		if(i == EV_REP || i == EV_LED){
+			continue;
+		}
 		if ((types[i / (sizeof(unsigned long) * 8)] & ((unsigned long) 1 << i % (sizeof(unsigned long) * 8))) > 0) {
 			memset(&keys, 0, sizeof(keys));
 
