@@ -34,7 +34,9 @@ When installed, this component will be available as `input-client`
 ## Build prerequisites
 
 A working C compiler and (GNU) make, in addition to the Linux `uinput` headers (`linux/uinput.h`),
-which is included in the package `linux-libc-dev` in Debian. To build the server [libevdev](https://www.freedesktop.org/wiki/Software/libevdev/) is needed.
+which is included in the package `linux-libc-dev` in Debian.
+For the the server [libevdev](https://www.freedesktop.org/wiki/Software/libevdev/) (package `libevdev-dev`)
+is needed.
 
 ## Build
 
