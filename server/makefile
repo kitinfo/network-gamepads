@@ -1,6 +1,6 @@
 .PHONY: clean install
 PREFIX ?= $(DESTDIR)/usr/local/bin
-CFLAGS ?= -Wall -g
+CFLAGS ?= -Wall -g $(shell pkg-config --cflags libevdev)
 LDLIBS ?= -levdev
 
 OBJECTS = $(patsubst %.c, %.o, $(wildcard *.c ../common/*.c ../libs/*.c))
