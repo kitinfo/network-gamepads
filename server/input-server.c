@@ -260,11 +260,11 @@ int setCodeList(Config* config, char* file, int whitelist) {
 }
 
 int setWhitelist(int argc, char** argv, Config* config) {
+	memset(config->whitelist, 0, sizeof(config->whitelist));
 	return setCodeList(config, argv[1], 1);
 }
 
 int setBlacklist(int argc, char** argv, Config* config) {
-	memset(config->whitelist, 1, sizeof(config->whitelist));
 	return setCodeList(config, argv[1], 0);
 }
 
@@ -596,7 +596,7 @@ int main(int argc, char** argv) {
 		.password = getenv("SERVER_PW") ? getenv("SERVER_PW"):DEFAULT_PASSWORD
 	};
 
-	memset(config.whitelist, 0, sizeof(config.whitelist));
+	memset(config.whitelist, 1, sizeof(config.whitelist));
 
 	// argument parsing
 	add_arguments(&config);
