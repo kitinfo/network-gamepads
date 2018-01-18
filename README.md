@@ -34,7 +34,7 @@ When installed, this component will be available as `input-client`
 ## Build prerequisites
 
 A working C compiler and (GNU) make, in addition to the Linux `uinput` headers (`linux/uinput.h`),
-which is included in the package `linux-libc-dev` in Debian.
+which is included in the package `linux-libc-dev` in Debian. To build the server [libevdev](https://www.freedesktop.org/wiki/Software/libevdev/) is needed.
 
 ## Build
 
@@ -58,8 +58,8 @@ To connect to the server, users need to provide a password. The default password
 It may be overridden by specifying the environment variable `SERVER_PW` or the corresponding command line argument.
 
 To limit the types of keys/axes a client may use on the server, black- and whitelists are used.
-These contain lines space-separated `type code` pairs and either allow only these events (whitelists) or everything
-except these (blacklist). Example lists for the most used types can be found in [acls/](acls/).
+These contain lines space-separated `type.code` pairs and either allow only these events (whitelists) or everything
+except these (blacklist). Instead of `type.*` enables or disables all events of the given type. Lines beginning with `#` are comments. Example lists for the most used types can be found in [acls/](acls/).
 The default configuration allows all events.
 
 

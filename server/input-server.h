@@ -36,4 +36,5 @@ typedef struct {
 	char* bindhost;
 	char* port;
 	char* password;
+	int whitelist[EV_MAX][KEY_MAX];
 } Config;

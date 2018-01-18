@@ -5,6 +5,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include <libevdev/libevdev.h>
+
 #define SERVER_VERSION "InputServer 1.3"
 #define MAX_CLIENTS 8
 #define MAX_WAITING_CLIENTS 8
@@ -196,12 +198,85 @@ int usage(int argc, char** argv, Config* config) {
 	return -1;
 }
 
+int setCodeList(Config* config, char* file, int whitelist) {
+	FILE* f = fopen(file, "r");
+	char* line = NULL;
+	char* type;
+	char* code;
+	size_t len = 0;
+	if (f == NULL) {
+		fprintf(stderr, "Cannot open file: %s\n", strerror(errno));
+		return -1;
+	}
+	int status = 1;
+	int itype;
+	int icode;
+	int line_num = 0;
+	while (getline(&line, &len, f) != -1) {
+		if (line[0] == '#') {
+			continue;
+		}
+		line[strlen(line) -1] = 0;
+		type = strtok(line, ".");
+		code = strtok(NULL, ".");
+
+		if (!type || !code) {
+			logprintf(config->log, LOG_ERROR, "Line %d: Code not defined. Format is type.code or type.*\n", line_num);
+			break;
+		}
+		itype = libevdev_event_type_from_name(type);
+
+		if (itype < 0) {
+			logprintf(config->log, LOG_ERROR, "Line %d: Type is not valid.\n", line_num);
+			status = -1;
+			break;
+		}
+		if (code[0] == '*') {
+			logprintf(config->log, LOG_INFO, "Enable all events from type %s.\n", type);
+			memset(config->whitelist[itype], 1, sizeof(int) * EV_KEY);
+			continue;
+		}
+
+		icode = libevdev_event_code_from_name(itype, code);
+
+		if (icode < 0) {
+			logprintf(config->log, LOG_ERROR, "Line %d: Code is not valid.\n", line_num);
+			status = -1;
+			break;
+		}
+
+		logprintf(config->log, LOG_INFO, "Set %s.%s to %d\n", type, code, whitelist);
+
+		config->whitelist[itype][icode] = whitelist;
+		line_num++;
+	}
+
+	fclose(f);
+	if (line) {
+		free(line);
+	}
+
+	return status;
+}
+
+int setWhitelist(int argc, char** argv, Config* config) {
+	return setCodeList(config, argv[1], 1);
+}
+
+int setBlacklist(int argc, char** argv, Config* config) {
+	memset(config->whitelist, 1, sizeof(config->whitelist));
+	return setCodeList(config, argv[1], 0);
+}
+
+
 bool add_arguments(Config* config) {
 	eargs_addArgument("-h", "--help", usage, 0);
 	eargs_addArgumentString("-p", "--port", &config->port);
 	eargs_addArgumentString("-b", "--bind", &config->bindhost);
 	eargs_addArgumentString("-pw", "--password", &config->password);
 	eargs_addArgumentUInt("-v", "--verbosity", &config->log.verbosity);
+	eargs_addArgument("-w", "--whitelist", setWhitelist, 1);
+	eargs_addArgument("-B", "--blacklist", setBlacklist, 1);
 
 	return true;
 }
@@ -309,10 +384,23 @@ int handle_request_event(Config* config, gamepad_client* client, RequestEventMes
 		return -1;
 
 	}
+	if (msg->type >= EV_MAX) {
+		logprintf(config->log, LOG_WARNING, "[%d] Event type is out of range.\n", slot);
+		return -1;
+	}
+
+	if (msg->code >= KEY_MAX) {
+		logprintf(config->log, LOG_WARNING, "[%d] Event code is out of range.\n", slot);
+		return -1;
+	}
+
+	if (!config->whitelist[msg->type][msg->code]) {
+		logprintf(config->log, LOG_WARNING, "[%d] Type %02X Code %X is forbidden.\n", slot, msg->type, msg->code);
+		return sizeof(RequestEventMessage);
+	}
+
 	logprintf(config->log, LOG_DEBUG, "[%d] Enabling event type %02X code %X\n", slot, msg->type, msg->code);
 
-	//TODO filtering
-	
 	client->meta.enabled_events = realloc(client->meta.enabled_events, (client->meta.enabled_events_length + 1) * sizeof(struct enabled_event));
 	if(!client->meta.enabled_events){
 		fprintf(stderr, "Failed to allocate memory\n");
@@ -507,6 +595,8 @@ int main(int argc, char** argv) {
 		.port = getenv("SERVER_PORT") ? getenv("SERVER_PORT"):DEFAULT_PORT,
 		.password = getenv("SERVER_PW") ? getenv("SERVER_PW"):DEFAULT_PASSWORD
 	};
+
+	memset(config.whitelist, 0, sizeof(config.whitelist));
 
 	// argument parsing
 	add_arguments(&config);

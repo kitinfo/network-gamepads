@@ -1,0 +1,10 @@
+# type.code or type.* for complete range
+EV_SYN.*
+EV_KEY.BTN_LEFT
+EV_KEY.BTN_MIDDLE
+EV_KEY.BTN_RIGHT
+EV_REL.REL_X
+EV_REL.REL_Y
+EV_REL.REL_WHEEL
+# msc scan codes
+EV_MSC.MSC_SCAN
