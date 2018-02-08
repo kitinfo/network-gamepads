@@ -1,0 +1,54 @@
+.TH INPUT-CLIENT 1 "February 2018" "v1.3" 
+.SH NAME
+input-client \- Connect and stream local input devices to a remote server
+.SH SYNOPSIS
+.BI "input-client [" options "] [" device "]"
+.SH DESCRIPTION
+.BR input-client " is a tool to connect local input devices such as keyboards, mouses, gamepads and"
+joysticks to a remote computer, allowing them to be used over the network. This allows, for example,
+couch coop on a shared big display run from a dedicated remote host.
+
+.RI "When run without a specified " device ", the tool presents a dialog of all devices available for selection."
+.SH OPTIONS
+.TP
+.B --help | -?
+Print a short help text.
+.TP
+.BI --host " host" " | -h" " host"
+The remote host to connect to. This parameter may also be set via the environment variable
+.BR SERVER_HOST "."
+.TP
+.BI --port " port" " | -p " port
+The TCP port to use for communication with the server. Defaults to
+.B 9292
+.TP
+.BI --name " name" " | -n " name
+Overwrite the device name on the server. This may be used on some servers for mapping inputs to player
+profiles or key bindings. Defaults to the name reported in the selection dialog.
+.TP
+.BI --password " password" " | -pw " password
+The connection password to present to the server. Defaults to
+.BR foobar ". This parameter may also be set via the environment variable " SERVER_PW "."
+.TP
+.BI --verbosity " level" " | -v " level
+Increase output verbosity level. Ranges from 0 (errors only) to 5 (debug).
+.TP
+.BI --reopen " n" " | -r " n
+.RI "Try to reopen the local device connection " n " times after losing it, to allow for faulty connections."
+.RB "The special value " -1 " retries indefinitely."
+.TP
+.BI --continue " slot" "| -c" " slot"
+Request a specific server slot instead of being automatically assigned one.
+This allows users to re-use a previously disconnected connection without disconnecting
+the remote input device.
+.SH BUGS
+Connection continuation may not work in some cases.
+
+The server may filter events received from the client without any indication to the client.
+
+Please report additional bugs or issues at the project bug tracker at https://github.com/kitinfo/network-gamepads/issues.
+.SH AUTHORS
+ Jan "mpease" Duepmeier <me at mpease dot de>
+ Fabian "cbdev" Stumpf <cb at cbcdn dot com>
+.SH "SEE ALSO"
+This project's home lies at https://github.com/kitinfo/network-gamepads.

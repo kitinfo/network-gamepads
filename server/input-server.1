@@ -1,0 +1,43 @@
+.TH INPUT-SERVER 1 "February 2018" "v1.3" 
+.SH NAME
+input-server \- Create input devices fed from network input
+.SH SYNOPSIS
+.BI "input-server [" options "]
+.SH DESCRIPTION
+.BR input-server " is a tool that allows remote clients to connect their input devices, such as keyboards,"
+mouses, gamepads and joysticks to the local machine over the network, allowing them to be used as if they were
+connected locally. This allows, for example, couch coop on a shared big display run from a dedicated remote host.
+.SH OPTIONS
+.TP
+.B --help | -h
+Print a short help text.
+.TP
+.BI --bind " host" " | -b" " host"
+The interface to bind the server to. This parameter may also be set via the environment variable
+.BR SERVER_HOST ". Defaults to " :: "." 
+.TP
+.BI --port " port" " | -p " port
+The TCP port to use for communication with the server. Defaults to
+.B 9292
+.TP
+.BI --password " password" " | -pw " password
+The connection password to present to the server. Defaults to
+.BR foobar ". This parameter may also be set via the environment variable " SERVER_PW "."
+.TP
+.BI --whitelist " file" " | -W " file
+Read a file containing an event code white list. This allows filtering the events forwarded from the client
+to the virtual input devices.
+.TP
+.BI --blacklist " file" " | -B " file
+Read a file containing an event code black list. This allows filtering the events forwarded from the client
+to the virtual input devices.
+.TP
+.BI --verbosity " level" " | -v " level
+Increase output verbosity level. Ranges from 0 (errors only) to 4 (all I/O).
+.SH BUGS
+Please report bugs or issues at the project bug tracker at https://github.com/kitinfo/network-gamepads/issues.
+.SH AUTHORS
+ Jan "mpease" Duepmeier <me at mpease dot de>
+ Fabian "cbdev" Stumpf <cb at cbcdn dot com>
+.SH "SEE ALSO"
+This project's home lies at https://github.com/kitinfo/network-gamepads.

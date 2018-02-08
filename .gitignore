@@ -3,3 +3,4 @@ client/input-client
 server/input-server
 osc/osc-xlater
 **/*.o
+*.gz

@@ -191,6 +191,8 @@ int usage(int argc, char** argv, Config* config) {
 			"    -b,  --bind <bind>          - Address to bind to\n"
 			"    -p,  --port <port>          - Port to use\n"
 			"    -h,  --help                 - Print this help message\n"
+			"    -B,  --blacklist <file>     - Read an event code blacklist file\n"
+			"    -W,  --whitelist <file>     - Read an event code whitelist file\n"
 			"    -pw, --password <password>  - Connection password\n"
 			"    -v,  --verbosity <level>    - Verbosity level (0 (errors only) - 4 (all I/O))\n"
 			, config->program_name, config->program_name);
@@ -275,7 +277,7 @@ bool add_arguments(Config* config) {
 	eargs_addArgumentString("-b", "--bind", &config->bindhost);
 	eargs_addArgumentString("-pw", "--password", &config->password);
 	eargs_addArgumentUInt("-v", "--verbosity", &config->log.verbosity);
-	eargs_addArgument("-w", "--whitelist", setWhitelist, 1);
+	eargs_addArgument("-W", "--whitelist", setWhitelist, 1);
 	eargs_addArgument("-B", "--blacklist", setBlacklist, 1);
 
 	return true;
