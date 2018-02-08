@@ -8,6 +8,11 @@ Originally written to support big-screen playing of single-screen multiplayer ga
 the project has developed to be generic enough to support just about any type of
 input device.
 
+**IMPORTANT NOTE**: Do not type passwords or other credentials over this tool.
+While the connection establishment is secured by a password (to limit the pool
+of people able to connect), the password itself as well as all input is transmitted
+in plain text over the network.
+
 # Project components
 
 ## The server
