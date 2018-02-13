@@ -1,7 +1,7 @@
 #pragma once
 #include "../libs/logger.h"
 
-#define VERSION "InputClient 1.3"
+#define VERSION "InputClient 2.0"
 
 typedef struct {
 	LOGGER log;

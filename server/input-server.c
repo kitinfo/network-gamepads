@@ -7,7 +7,7 @@
 
 #include <libevdev/libevdev.h>
 
-#define SERVER_VERSION "InputServer 1.3"
+#define SERVER_VERSION "InputServer 2.0"
 #define MAX_CLIENTS 8
 #define MAX_WAITING_CLIENTS 8
 
