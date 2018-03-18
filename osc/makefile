@@ -1,5 +1,5 @@
 .PHONY: clean install
-PREFIX ?= $(DESTDIR)/usr/local/bin
+PREFIX ?= /usr/local
 CFLAGS ?= -Wall -g
 LDLIBS ?= -lm
 
