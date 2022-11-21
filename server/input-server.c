@@ -520,7 +520,7 @@ bool client_data(Config* config, gamepad_client* client, uint8_t slot) {
 				ret = handle_data(config, client, (DataMessage*) msg, slot);
 				break;
 			default:
-				logprintf(config->log, LOG_ERROR, "[%d] Unkown message type 0x%.2x\n", slot, msg[0]);
+				logprintf(config->log, LOG_ERROR, "[%d] Unknown message type 0x%.2x\n", slot, msg[0]);
 				ret = -1;
 				break;
 		}

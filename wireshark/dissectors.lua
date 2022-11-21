@@ -290,7 +290,7 @@ checkNGamepadsLength = function(tvbuf, offset)
 	elseif msgtype_val == msgtype.QUIT then
 		return 1
 	else
-		dprint2("unkown msg_type")
+		dprint2("unknown msg_type")
 		return 0
 	end
 end
